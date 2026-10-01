@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shift Availability</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root{
+    --ink:#1c2430;
+    --ink-soft:#3c4656;
+    --paper:#eee7d8;
+    --brass:#b5822f;
+    --brass-dark:#8f6420;
+    --green:#4c7a4f;
+    --green-bg:#e2ede2;
+    --red:#a8402f;
+    --red-bg:#f4e2df;
+    --line:#c9bea3;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;
+  }
+  .wrap{ max-width:900px; margin:0 auto; padding:26px 16px 50px; }
+  .masthead{ text-align:center; padding:4px 0 18px; border-bottom:2px solid var(--brass); margin-bottom:20px; }
+  .masthead .eyebrow{ letter-spacing:.18em; text-transform:uppercase; font-size:11px; color:var(--brass); font-weight:700; }
+  .masthead h1{ font-family:Georgia,"Times New Roman",serif; font-size:26px; margin:6px 0 4px; }
+  .masthead .sub{ font-size:13px; color:#c9c2b0; }
+
+  .card{
+    background:var(--paper); color:var(--ink); border-radius:10px;
+    padding:20px; margin-bottom:16px;
+    box-shadow:0 1px 0 rgba(0,0,0,.2) inset, 0 6px 18px rgba(0,0,0,.25);
+  }
+  .row-between{ display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
+  h2{ margin:0; font-family:Georgia,serif; font-size:16px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-soft); }
+  .week-range{ font-size:13px; color:var(--brass-dark); font-weight:700; }
+
+  .add-row{ display:flex; gap:8px; }
+  .add-row input{ flex:1; padding:11px 13px; border:1px solid var(--line); border-radius:7px; font-size:15px; background:#fbf8f1; color:var(--ink); }
+  .add-row button{ background:var(--ink); color:var(--paper); border:none; border-radius:7px; padding:11px 16px; font-size:14px; font-weight:700; cursor:pointer; }
+
+  .staff-manage-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:9px 2px; border-bottom:1px solid var(--line); font-size:14px; font-weight:600;
+  }
+  .staff-manage-row:last-child{ border-bottom:none; }
+  .remove-staff-btn{
+    background:none; border:1px solid var(--red); color:var(--red);
+    border-radius:14px; padding:4px 11px; font-size:12px; font-weight:700; cursor:pointer;
+  }
+  .remove-staff-btn:hover{ background:var(--red-bg); }
+
+  select{
+    width:100%; padding:11px 13px; border:1px solid var(--line); border-radius:7px;
+    font-size:15px; background:#fbf8f1; color:var(--ink); font-weight:700;
+  }
+
+  .staff-btn-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:10px; margin-top:12px; }
+  .staff-btn-grid.collapsed{ display:none; }
+  .staff-pick-btn{
+    background:#fbf8f1; border:1px solid var(--line); border-radius:9px;
+    padding:12px 10px; text-align:left; cursor:pointer;
+  }
+  .staff-pick-btn .pick-name{ font-weight:700; font-size:14.5px; display:block; }
+  .staff-pick-btn .pick-status{ font-size:11.5px; margin-top:3px; display:block; }
+  .staff-pick-btn .pick-status.confirmed{ color:var(--green); font-weight:700; }
+  .staff-pick-btn .pick-status.pending{ color:#9c9478; }
+
+  .modal.edit-modal{ max-width:640px; max-height:88vh; overflow-y:auto; text-align:left; padding:20px; }
+  .edit-modal-header{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:10px; padding-bottom:10px; border-bottom:2px solid var(--brass);
+  }
+  .edit-modal-name{ font-family:Georgia,serif; font-size:19px; font-weight:700; }
+  .edit-modal-close{
+    background:var(--ink); color:var(--paper); border:none; border-radius:50%;
+    width:30px; height:30px; font-size:14px; cursor:pointer; flex-shrink:0;
+  }
+
+  .day-row{ border-bottom:1px solid var(--line); padding:14px 0; }
+  .day-row:last-child{ border-bottom:none; }
+  .day-row-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .day-name{ font-weight:700; font-size:15px; }
+  .day-date{ font-size:12px; color:#8a8270; font-weight:400; }
+  .day-btn-group{ display:flex; gap:6px; }
+  .unavail-btn{
+    font-size:12px; font-weight:700; padding:6px 12px; border-radius:16px;
+    border:1px solid var(--ink-soft); background:transparent; color:var(--ink-soft); cursor:pointer;
+  }
+  .unavail-btn.active{ background:var(--red); border-color:var(--red); color:#fff; }
+  .allday-btn{
+    font-size:12px; font-weight:700; padding:6px 12px; border-radius:16px;
+    border:1px solid var(--brass-dark); background:transparent; color:var(--brass-dark); cursor:pointer;
+  }
+  .allday-btn.active{ background:var(--brass); border-color:var(--brass); color:var(--ink); }
+
+  .shift-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px;
+  }
+  .shift-grid.disabled{ opacity:.35; pointer-events:none; }
+  .shift-btn{
+    background:#fbf8f1; border:1px solid var(--line); border-radius:8px;
+    padding:10px 8px; text-align:left; cursor:pointer;
+  }
+  .shift-btn .shift-name{ font-weight:700; font-size:13.5px; display:block; }
+  .shift-btn .shift-time{ font-size:11.5px; color:#7d7660; display:block; margin-top:2px; }
+  .shift-btn.selected{ background:var(--green-bg); border-color:var(--green); }
+  .shift-btn.selected .shift-name{ color:var(--green); }
+
+  table{ width:100%; border-collapse:collapse; margin-top:6px; font-size:12px; }
+  th, td{ border:1px solid var(--line); padding:6px 5px; text-align:center; }
+  th{ background:#e2d9c5; font-size:10px; text-transform:uppercase; letter-spacing:.02em; }
+  td.name-col, th.name-col{ text-align:left; font-weight:700; }
+  td.off{ color:var(--red); }
+  td.unset{ color:#9c9478; }
+  .legend{ font-size:11.5px; color:#7d7660; margin-top:10px; line-height:1.6; }
+
+  .btn{ padding:13px; border-radius:8px; border:none; font-size:14px; font-weight:700; cursor:pointer; width:100%; }
+  .btn-brass{ background:var(--brass); color:var(--ink); }
+  .btn-primary{ background:var(--green); color:#fff; }
+  .btn-secondary{ background:transparent; border:1px solid var(--ink-soft); color:var(--ink-soft); }
+  .confirm-footer{ margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
+  .confirmed-banner{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--green-bg); border:1px solid var(--green); border-radius:8px;
+    padding:12px 14px; margin-bottom:10px; font-size:14px; font-weight:700; color:var(--green);
+  }
+  .day-row.locked{ opacity:.55; }
+  .day-row.locked .shift-grid, .day-row.locked .unavail-btn, .day-row.locked .allday-btn{ pointer-events:none; }
+  .check-btn{ background:transparent; border:1px solid var(--ink-soft); color:var(--ink-soft); border-radius:7px; padding:9px 14px; font-size:13px; font-weight:700; cursor:pointer; }
+  .toggle-list-btn{
+    width:100%; background:#fbf8f1; border:1px solid var(--line); color:var(--ink-soft);
+    border-radius:8px; padding:11px; font-size:13.5px; font-weight:700; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .toggle-list-btn::after{ content:'▾'; font-size:11px; }
+  .toggle-list-btn.open::after{ content:'▴'; }
+  .collapsed{ display:none; }
+
+  .empty{ color:#8a8270; font-size:14px; padding:10px 0; text-align:center; }
+  .footer-note{ text-align:center; color:#8b8570; font-size:12px; margin-top:18px; }
+
+  .modal-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; z-index:60; padding:20px; }
+  .modal-overlay.show{ display:flex; }
+  .modal{ background:var(--paper); color:var(--ink); border-radius:12px; max-width:380px; width:100%; padding:24px; text-align:center; }
+  .modal .icon{ font-size:34px; margin-bottom:8px; }
+  .modal h3{ font-family:Georgia,serif; margin:0 0 10px; font-size:19px; }
+  .modal p{ font-size:14px; color:var(--ink-soft); margin:0 0 14px; }
+  .modal .missing-list{ text-align:left; background:#fbf8f1; border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:16px; font-size:14px; font-weight:600; }
+  .modal button{ background:var(--ink); color:var(--paper); border:none; border-radius:8px; padding:12px 20px; font-size:14px; font-weight:700; cursor:pointer; width:100%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="eyebrow">Shop Floor</div>
+    <h1>Shift Availability</h1>
+    <div class="sub">Pick the shifts you can work each day</div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom:12px;">Add staff</h2>
+    <div class="add-row">
+      <input type="text" id="newStaffName" placeholder="Staff name…" maxlength="30">
+      <button id="addStaffBtn">Add</button>
+    </div>
+    <button class="toggle-list-btn" id="toggleManageListBtn" style="margin-top:12px;">Manage staff list</button>
+    <div class="collapsed" id="staffManageList"></div>
+  </div>
+
+  <div class="card">
+    <div class="row-between">
+      <h2>Update availability</h2>
+      <button class="check-btn" id="checkMissingBtn">Check who's missing</button>
+    </div>
+    <div class="week-range" id="weekRange"></div>
+    <div class="staff-btn-grid" id="staffButtonGrid" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom:12px;">Overview — all staff</h2>
+    <div style="overflow-x:auto;">
+      <table id="overviewTable"><thead><tr id="overviewHead"></tr></thead><tbody id="overviewBody"></tbody></table>
+    </div>
+    <div class="legend">O = Opening (8–4) · M1 = Mid-Day (9–6) · M2 = Mid-Day (12–9) · C = Closing (3–11)</div>
+    <button class="btn btn-brass" id="exportPdfBtn" style="margin-top:16px;">Save as PDF roster</button>
+  </div>
+
+  <div class="footer-note">Due every Saturday for the week starting the following Monday — the grid rolls over automatically once Monday arrives. Everything you enter is saved on this PC, in this browser, only.</div>
+
+  <div id="storageWarning" style="display:none; background:#f4e2df; color:#a8402f; border:1px solid #a8402f; border-radius:8px; padding:12px 14px; font-size:13px; margin-top:14px;">
+    ⚠️ Changes aren't saving. Your browser may be blocking local storage (private/incognito mode, or storage disabled in settings) — try a normal browser window.
+  </div>
+</div>
+
+<div class="modal-overlay" id="editModal">
+  <div class="modal edit-modal">
+    <div class="edit-modal-header">
+      <div class="edit-modal-name" id="editModalName"></div>
+      <button class="edit-modal-close" id="closeEditModalBtn">✕</button>
+    </div>
+    <div id="dayRows"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reminderModal">
+  <div class="modal">
+    <div class="icon">⏰</div>
+    <h3 id="modalTitle">Availability still missing</h3>
+    <p id="modalSub">It's past the Saturday deadline and next week's schedule needs these staff to be marked:</p>
+    <div class="missing-list" id="missingList"></div>
+    <button id="dismissModalBtn">Got it</button>
+  </div>
+</div>
+
+<script>
+const DAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
+const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+const SHIFTS = [
+  { key:'opening', name:'Opening',  time:'8:00 AM – 4:00 PM',  short:'O 8-4',   hours:'8am–4pm'   },
+  { key:'midday1', name:'Mid-Day',  time:'9:00 AM – 6:00 PM',  short:'M1 9-6',  hours:'9am–6pm'   },
+  { key:'midday2', name:'Mid-Day',  time:'12:00 PM – 9:00 PM', short:'M2 12-9', hours:'12pm–9pm'  },
+  { key:'closing', name:'Closing',  time:'3:00 PM – 11:00 PM', short:'C 3-11',  hours:'3pm–11pm'  }
+];
+
+let staffList = [];
+let weekData = {};
+let editingMonday = null;
+let weekKey = '';
+let weekDates = [];
+let currentStaff = '';
+
+const newStaffName = document.getElementById('newStaffName');
+const addStaffBtn = document.getElementById('addStaffBtn');
+const staffButtonGrid = document.getElementById('staffButtonGrid');
+const staffManageList = document.getElementById('staffManageList');
+const toggleManageListBtn = document.getElementById('toggleManageListBtn');
+const editModal = document.getElementById('editModal');
+const editModalName = document.getElementById('editModalName');
+const closeEditModalBtn = document.getElementById('closeEditModalBtn');
+const dayRows = document.getElementById('dayRows');
+const weekRangeEl = document.getElementById('weekRange');
+const overviewHead = document.getElementById('overviewHead');
+const overviewBody = document.getElementById('overviewBody');
+const checkMissingBtn = document.getElementById('checkMissingBtn');
+const exportPdfBtn = document.getElementById('exportPdfBtn');
+const reminderModal = document.getElementById('reminderModal');
+const missingList = document.getElementById('missingList');
+const modalTitle = document.getElementById('modalTitle');
+const modalSub = document.getElementById('modalSub');
+const dismissModalBtn = document.getElementById('dismissModalBtn');
+const storageWarningEl = document.getElementById('storageWarning');
+
+function pad(n){ return String(n).padStart(2,'0'); }
+function toKeyDate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+function escapeHtml(str){ const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+function getEditingWeekMonday(){
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMonday = (day === 0) ? -6 : (1 - day);
+  const thisMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday);
+  const nextMonday = new Date(thisMonday);
+  nextMonday.setDate(thisMonday.getDate() + 7);
+  return nextMonday;
+}
+function computeWeekDates(monday){
+  const dates = [];
+  for(let i=0;i<7;i++){ const d = new Date(monday); d.setDate(monday.getDate()+i); dates.push(d); }
+  return dates;
+}
+function isPastDueWindow(){
+  const dow = new Date().getDay();
+  return dow === 6 || dow === 0;
+}
+
+// ---------- storage (local to this browser/PC only) ----------
+function showStorageWarning(){ storageWarningEl.style.display = 'block'; }
+function hideStorageWarning(){ storageWarningEl.style.display = 'none'; }
+
+function safeStorageSet(key, value){
+  try{
+    localStorage.setItem(key, value);
+    hideStorageWarning();
+    return true;
+  }catch(e){
+    console.error('Local storage save failed for', key, e);
+    showStorageWarning();
+    return false;
+  }
+}
+function loadStaffList(){
+  try{
+    const raw = localStorage.getItem('shift-staff-list');
+    staffList = raw ? JSON.parse(raw) : [];
+  }catch(e){ staffList = []; showStorageWarning(); }
+}
+function saveStaffList(){ return safeStorageSet('shift-staff-list', JSON.stringify(staffList)); }
+
+function loadWeekData(){
+  try{
+    const raw = localStorage.getItem('shift-availability:'+weekKey);
+    weekData = raw ? JSON.parse(raw) : {};
+  }catch(e){ weekData = {}; showStorageWarning(); }
+}
+function saveWeekData(){ return safeStorageSet('shift-availability:'+weekKey, JSON.stringify(weekData)); }
+
+// ---------- missing/status helpers ----------
+function dayIsSet(entry){
+  if(!entry) return false;
+  if(entry.status === 'unavailable') return true;
+  return Array.isArray(entry.shifts) && entry.shifts.length > 0;
+}
+function isStaffMissing(name){
+  const entry = weekData[name];
+  if(!entry) return true;
+  return DAY_KEYS.some(k => !dayIsSet(entry[k]));
+}
+function getMissingStaff(){ return staffList.filter(isStaffMissing); }
+
+// ---------- rendering ----------
+function updateToggleLabels(){
+  const n = staffList.length;
+  toggleManageListBtn.textContent = (toggleManageListBtn.classList.contains('open') ? 'Hide staff list' : `Manage staff list (${n})`);
+}
+
+toggleManageListBtn.addEventListener('click', () => {
+  const opening = staffManageList.classList.contains('collapsed');
+  staffManageList.classList.toggle('collapsed', !opening);
+  toggleManageListBtn.classList.toggle('open', opening);
+  updateToggleLabels();
+});
+
+function renderStaffButtonGrid(){
+  updateToggleLabels();
+  staffButtonGrid.innerHTML = '';
+  if(staffList.length === 0){
+    staffButtonGrid.innerHTML = '<div class="empty">Add staff above to get started.</div>';
+    return;
+  }
+  staffList.forEach(name => {
+    const entry = weekData[name];
+    const locked = !!(entry && entry.locked);
+    const btn = document.createElement('div');
+    btn.className = 'staff-pick-btn';
+    btn.innerHTML = `<span class="pick-name">${escapeHtml(name)}</span>` +
+      `<span class="pick-status ${locked ? 'confirmed' : 'pending'}">${locked ? '✓ Confirmed' : 'Tap to set hours'}</span>`;
+    btn.onclick = () => openEditModal(name);
+    staffButtonGrid.appendChild(btn);
+  });
+}
+
+function openEditModal(name){
+  currentStaff = name;
+  try{ localStorage.setItem('shiftAvailName', currentStaff); }catch(e){}
+  editModalName.textContent = name;
+  renderDayRows();
+  editModal.classList.add('show');
+}
+function closeEditModal(){
+  editModal.classList.remove('show');
+  renderStaffButtonGrid();
+}
+closeEditModalBtn.addEventListener('click', closeEditModal);
+editModal.addEventListener('click', (e) => { if(e.target === editModal) closeEditModal(); });
+function renderWeekRange(){
+  const startLabel = weekDates[0].toLocaleDateString([], {month:'short', day:'numeric'});
+  const endLabel = weekDates[6].toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'});
+  weekRangeEl.textContent = startLabel + ' – ' + endLabel;
+}
+
+function renderDayRows(){
+  dayRows.innerHTML = '';
+  if(!currentStaff){
+    dayRows.innerHTML = '<div class="empty">Select your name above to set your availability.</div>';
+    return;
+  }
+  if(!weekData[currentStaff]) weekData[currentStaff] = {};
+  const locked = !!weekData[currentStaff].locked;
+
+  DAY_KEYS.forEach((dayKey, i) => {
+    const entry = weekData[currentStaff][dayKey] || { status:'available', shifts:[] };
+    const isUnavailable = entry.status === 'unavailable';
+
+    const row = document.createElement('div');
+    row.className = 'day-row' + (locked ? ' locked' : '');
+
+    const top = document.createElement('div');
+    top.className = 'day-row-top';
+    top.innerHTML = `<div class="day-name">${DAY_LABELS[i]} <span class="day-date">${weekDates[i].getDate()}</span></div>`;
+
+    const unavailBtn = document.createElement('button');
+    unavailBtn.className = 'unavail-btn' + (isUnavailable ? ' active' : '');
+    unavailBtn.textContent = isUnavailable ? 'Not available ✓' : 'Not available';
+
+    const allDayBtn = document.createElement('button');
+    const allSelected = !isUnavailable && entry.shifts && entry.shifts.length === SHIFTS.length;
+    allDayBtn.className = 'allday-btn' + (allSelected ? ' active' : '');
+    allDayBtn.textContent = allSelected ? 'All Day ✓' : 'All Day';
+
+    const btnGroup = document.createElement('div');
+    btnGroup.className = 'day-btn-group';
+    btnGroup.appendChild(allDayBtn);
+    btnGroup.appendChild(unavailBtn);
+    top.appendChild(btnGroup);
+    row.appendChild(top);
+
+    const grid = document.createElement('div');
+    grid.className = 'shift-grid' + (isUnavailable ? ' disabled' : '');
+
+    SHIFTS.forEach(shift => {
+      const btn = document.createElement('div');
+      const selected = !isUnavailable && entry.shifts && entry.shifts.includes(shift.key);
+      btn.className = 'shift-btn' + (selected ? ' selected' : '');
+      btn.innerHTML = `<span class="shift-name">${selected ? '✓ ' : ''}${shift.name}</span><span class="shift-time">${shift.time}</span>`;
+      btn.onclick = () => toggleShift(dayKey, shift.key);
+      grid.appendChild(btn);
+    });
+    row.appendChild(grid);
+    dayRows.appendChild(row);
+
+    unavailBtn.onclick = () => toggleUnavailable(dayKey);
+    allDayBtn.onclick = () => setAllDay(dayKey);
+  });
+
+  const footer = document.createElement('div');
+  footer.className = 'confirm-footer';
+  if(locked){
+    const banner = document.createElement('div');
+    banner.className = 'confirmed-banner';
+    banner.innerHTML = `<span>✓ Confirmed — you can't change this unless you edit it</span>`;
+    footer.appendChild(banner);
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-secondary';
+    editBtn.textContent = 'Edit';
+    editBtn.onclick = () => {
+      weekData[currentStaff].locked = false;
+      saveWeekData();
+      renderDayRows();
+    };
+    footer.appendChild(editBtn);
+  } else {
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'btn btn-primary';
+    confirmBtn.textContent = 'Confirm availability';
+    confirmBtn.onclick = () => {
+      weekData[currentStaff].locked = true;
+      saveWeekData();
+      renderDayRows();
+    };
+    footer.appendChild(confirmBtn);
+  }
+  dayRows.appendChild(footer);
+}
+
+function toggleShift(dayKey, shiftKey){
+  if(!weekData[currentStaff]) weekData[currentStaff] = {};
+  if(weekData[currentStaff].locked) return;
+  let entry = weekData[currentStaff][dayKey];
+  if(!entry || entry.status === 'unavailable'){
+    entry = { status:'available', shifts:[] };
+  }
+  const idx = entry.shifts.indexOf(shiftKey);
+  if(idx === -1) entry.shifts.push(shiftKey);
+  else entry.shifts.splice(idx, 1);
+  weekData[currentStaff][dayKey] = entry;
+  saveWeekData();
+  renderDayRows();
+  renderOverview();
+}
+
+function setAllDay(dayKey){
+  if(!weekData[currentStaff]) weekData[currentStaff] = {};
+  if(weekData[currentStaff].locked) return;
+  const entry = weekData[currentStaff][dayKey];
+  const alreadyAllDay = entry && entry.status === 'available' && entry.shifts && entry.shifts.length === SHIFTS.length;
+  if(alreadyAllDay){
+    weekData[currentStaff][dayKey] = { status:'available', shifts:[] };
+  } else {
+    weekData[currentStaff][dayKey] = { status:'available', shifts: SHIFTS.map(s => s.key) };
+  }
+  saveWeekData();
+  renderDayRows();
+  renderOverview();
+}
+
+function toggleUnavailable(dayKey){
+  if(!weekData[currentStaff]) weekData[currentStaff] = {};
+  if(weekData[currentStaff].locked) return;
+  const entry = weekData[currentStaff][dayKey];
+  const currentlyUnavailable = entry && entry.status === 'unavailable';
+  if(currentlyUnavailable){
+    weekData[currentStaff][dayKey] = { status:'available', shifts:[] };
+  } else {
+    weekData[currentStaff][dayKey] = { status:'unavailable', shifts:[] };
+  }
+  saveWeekData();
+  renderDayRows();
+  renderOverview();
+}
+
+function renderOverview(){
+  overviewHead.innerHTML = '<th class="name-col">Staff</th>' +
+    weekDates.map((d,i) => `<th>${DAY_LABELS[i]}<br>${d.getDate()}</th>`).join('');
+  overviewBody.innerHTML = '';
+  if(staffList.length === 0){
+    overviewBody.innerHTML = `<tr><td colspan="8" class="empty">No staff added yet.</td></tr>`;
+    return;
+  }
+  staffList.forEach(name => {
+    const tr = document.createElement('tr');
+    let html = `<td class="name-col">${escapeHtml(name)}</td>`;
+    DAY_KEYS.forEach(dayKey => {
+      const entry = weekData[name] && weekData[name][dayKey];
+      if(!dayIsSet(entry)){
+        html += `<td class="unset">—</td>`;
+      } else if(entry.status === 'unavailable'){
+        html += `<td class="off">Off</td>`;
+      } else {
+        const codes = entry.shifts.map(k => SHIFTS.find(s => s.key===k).short.split(' ')[0]).join(',');
+        html += `<td>${codes}</td>`;
+      }
+    });
+    tr.innerHTML = html;
+    overviewBody.appendChild(tr);
+  });
+}
+
+// ---------- add staff ----------
+addStaffBtn.addEventListener('click', () => {
+  const name = newStaffName.value.trim();
+  if(!name || staffList.includes(name)){ newStaffName.value=''; return; }
+  staffList.push(name);
+  newStaffName.value = '';
+  renderStaffButtonGrid();
+  renderStaffManageList();
+  renderOverview();
+  saveStaffList();
+});
+newStaffName.addEventListener('keydown', e => { if(e.key==='Enter') addStaffBtn.click(); });
+
+function renderStaffManageList(){
+  staffManageList.innerHTML = '';
+  if(staffList.length === 0) return;
+  staffList.forEach(name => {
+    const row = document.createElement('div');
+    row.className = 'staff-manage-row';
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = name;
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-staff-btn';
+    removeBtn.textContent = '✕ Remove';
+    removeBtn.onclick = () => removeStaff(name);
+    row.appendChild(nameSpan);
+    row.appendChild(removeBtn);
+    staffManageList.appendChild(row);
+  });
+}
+
+function removeStaff(name){
+  if(!confirm(`Remove ${name}? This deletes their availability for this week too.`)) return;
+  staffList = staffList.filter(n => n !== name);
+  saveStaffList();
+
+  if(weekData[name]){
+    delete weekData[name];
+    saveWeekData();
+  }
+
+  if(currentStaff === name){
+    currentStaff = '';
+    try{ localStorage.removeItem('shiftAvailName'); }catch(e){}
+    editModal.classList.remove('show');
+  }
+
+  renderStaffButtonGrid();
+  renderStaffManageList();
+  renderOverview();
+}
+
+// ---------- reminder modal ----------
+function showMissingModal(missing, isEmpty){
+  if(isEmpty){
+    modalTitle.textContent = 'All set';
+    modalSub.textContent = '';
+    missingList.innerHTML = `<div>Everyone's availability is in. 🎉</div>`;
+  } else {
+    modalTitle.textContent = 'Availability still missing';
+    modalSub.textContent = "It's past the Saturday deadline and next week's schedule needs these staff to be marked:";
+    missingList.innerHTML = missing.map(n => `<div>• ${escapeHtml(n)}</div>`).join('');
+  }
+  reminderModal.classList.add('show');
+}
+dismissModalBtn.addEventListener('click', () => reminderModal.classList.remove('show'));
+checkMissingBtn.addEventListener('click', () => {
+  const missing = getMissingStaff();
+  showMissingModal(missing, missing.length===0);
+});
+
+// ---------- PDF export ----------
+exportPdfBtn.addEventListener('click', () => {
+  if(staffList.length === 0) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'landscape', unit:'pt', format:'a4' });
+  const marginX = 30;
+
+  const startLabel = weekDates[0].toLocaleDateString([], {month:'short', day:'numeric'});
+  const endLabel = weekDates[6].toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'});
+
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(18);
+  doc.setTextColor(28,36,48);
+  doc.text('Shift Availability Roster', marginX, 42);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(11);
+  doc.setTextColor(90,90,90);
+  doc.text('Week of ' + startLabel + ' – ' + endLabel, marginX, 60);
+
+  const head = [['Staff', ...DAY_LABELS.map((label,i) => label + ' ' + weekDates[i].getDate())]];
+
+  function cellFor(name, dayKey){
+    const entry = weekData[name] && weekData[name][dayKey];
+    if(!dayIsSet(entry)) return 'Not submitted';
+    if(entry.status === 'unavailable') return 'Not available';
+    if(entry.shifts.length === SHIFTS.length) return 'All Day';
+    return entry.shifts.map(k => {
+      const s = SHIFTS.find(s => s.key === k);
+      return `${s.name} ${s.hours}`;
+    }).join('\n');
+  }
+
+  const body = staffList.map(name => [name, ...DAY_KEYS.map(dk => cellFor(name, dk))]);
+
+  doc.autoTable({
+    head,
+    body,
+    startY: 74,
+    margin: { left: marginX, right: marginX },
+    theme: 'grid',
+    styles: {
+      font: 'helvetica',
+      fontSize: 9,
+      cellPadding: 5,
+      halign: 'center',
+      valign: 'middle',
+      lineColor: [201,190,163],
+      lineWidth: 0.75,
+      textColor: [30,30,30]
+    },
+    headStyles: {
+      fillColor: [28,36,48],
+      textColor: [255,255,255],
+      fontStyle: 'bold',
+      fontSize: 10
+    },
+    columnStyles: {
+      0: { halign:'left', fontStyle:'bold', cellWidth: 100 }
+    },
+    alternateRowStyles: { fillColor: [247,243,233] },
+    didParseCell: (data) => {
+      if(data.section === 'body' && data.column.index > 0){
+        const text = Array.isArray(data.cell.raw) ? data.cell.raw.join(' ') : data.cell.raw;
+        if(text === 'Not available'){ data.cell.styles.textColor = [168,64,47]; }
+        else if(text === 'Not submitted'){ data.cell.styles.textColor = [160,152,120]; data.cell.styles.fontStyle = 'italic'; }
+        else if(text === 'All Day'){ data.cell.styles.textColor = [143,100,32]; data.cell.styles.fontStyle = 'bold'; data.cell.styles.fontSize = 10; }
+        else { data.cell.styles.textColor = [76,122,79]; data.cell.styles.fontStyle = 'bold'; }
+      }
+    }
+  });
+
+  const finalY = doc.lastAutoTable.finalY + 20;
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(9);
+  doc.setTextColor(120,120,120);
+  doc.text('Shift hours — Opening 8am–4pm  ·  Mid-Day 9am–6pm or 12pm–9pm  ·  Closing 3pm–11pm', marginX, finalY);
+  doc.text('Generated ' + new Date().toLocaleString([], {dateStyle:'medium', timeStyle:'short'}), marginX, finalY + 14);
+
+  doc.save('shift-availability-' + weekKey + '.pdf');
+});
+
+// ---------- init ----------
+function init(){
+  editingMonday = getEditingWeekMonday();
+  weekKey = toKeyDate(editingMonday);
+  weekDates = computeWeekDates(editingMonday);
+  renderWeekRange();
+
+  loadStaffList();
+  loadWeekData();
+  renderStaffButtonGrid();
+  renderStaffManageList();
+  renderOverview();
+
+  if(isPastDueWindow()){
+    const missing = getMissingStaff();
+    if(missing.length > 0) showMissingModal(missing, false);
+  }
+}
+init();
+</script>
+</body>
+</html>
