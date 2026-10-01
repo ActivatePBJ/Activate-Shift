@@ -57,13 +57,7 @@
   }
   .remove-staff-btn:hover{ background:var(--red-bg); }
 
-  select{
-    width:100%; padding:11px 13px; border:1px solid var(--line); border-radius:7px;
-    font-size:15px; background:#fbf8f1; color:var(--ink); font-weight:700;
-  }
-
   .staff-btn-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:10px; margin-top:12px; }
-  .staff-btn-grid.collapsed{ display:none; }
   .staff-pick-btn{
     background:#fbf8f1; border:1px solid var(--line); border-radius:9px;
     padding:12px 10px; text-align:left; cursor:pointer;
@@ -155,6 +149,8 @@
   .modal p{ font-size:14px; color:var(--ink-soft); margin:0 0 14px; }
   .modal .missing-list{ text-align:left; background:#fbf8f1; border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:16px; font-size:14px; font-weight:600; }
   .modal button{ background:var(--ink); color:var(--paper); border:none; border-radius:8px; padding:12px 20px; font-size:14px; font-weight:700; cursor:pointer; width:100%; }
+
+  #statusBar{ text-align:center; font-size:12px; color:#c9c2b0; margin-bottom:12px; min-height:16px; }
 </style>
 </head>
 <body>
@@ -165,6 +161,8 @@
     <h1>Shift Availability</h1>
     <div class="sub">Pick the shifts you can work each day</div>
   </div>
+
+  <div id="statusBar">Loading…</div>
 
   <div class="card">
     <h2 style="margin-bottom:12px;">Add staff</h2>
@@ -194,10 +192,10 @@
     <button class="btn btn-brass" id="exportPdfBtn" style="margin-top:16px;">Save as PDF roster</button>
   </div>
 
-  <div class="footer-note">Due every Saturday for the week starting the following Monday — the grid rolls over automatically once Monday arrives. Everything you enter is saved on this PC, in this browser, only.</div>
+  <div class="footer-note">Due every Saturday for the week starting the following Monday — the grid rolls over automatically once Monday arrives. Everything is saved online and shared with all staff.</div>
 
   <div id="storageWarning" style="display:none; background:#f4e2df; color:#a8402f; border:1px solid #a8402f; border-radius:8px; padding:12px 14px; font-size:13px; margin-top:14px;">
-    ⚠️ Changes aren't saving. Your browser may be blocking local storage (private/incognito mode, or storage disabled in settings) — try a normal browser window.
+    ⚠️ Can't reach the database. Your changes are NOT saved. Check your internet, then refresh the page.
   </div>
 </div>
 
@@ -222,6 +220,13 @@
 </div>
 
 <script>
+// ============================================================
+//  SUPABASE SETTINGS  — paste your anon / publishable key below
+// ============================================================
+const SUPABASE_URL = 'https://fhlfxcdmttzqvjedkgtv.supabase.co';
+const SUPABASE_KEY = 'PASTE_YOUR_ANON_OR_PUBLISHABLE_KEY_HERE';
+// ============================================================
+
 const DAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
 const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
@@ -259,6 +264,7 @@ const modalTitle = document.getElementById('modalTitle');
 const modalSub = document.getElementById('modalSub');
 const dismissModalBtn = document.getElementById('dismissModalBtn');
 const storageWarningEl = document.getElementById('storageWarning');
+const statusBar = document.getElementById('statusBar');
 
 function pad(n){ return String(n).padStart(2,'0'); }
 function toKeyDate(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
@@ -283,36 +289,77 @@ function isPastDueWindow(){
   return dow === 6 || dow === 0;
 }
 
-// ---------- storage (local to this browser/PC only) ----------
-function showStorageWarning(){ storageWarningEl.style.display = 'block'; }
+// ---------- Supabase (online storage) ----------
+function showStorageWarning(){ storageWarningEl.style.display = 'block'; setStatus('⚠️ Not saved'); }
 function hideStorageWarning(){ storageWarningEl.style.display = 'none'; }
+function setStatus(t){ statusBar.textContent = t; }
 
-function safeStorageSet(key, value){
+async function sb(path, options){
+  options = options || {};
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    method: options.method || 'GET',
+    headers: Object.assign({
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    }, options.headers || {}),
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  if(!res.ok){
+    const txt = await res.text();
+    throw new Error(res.status + ' ' + txt);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+async function loadStaffList(){
+  const rows = await sb('staff?select=name&order=id.asc');
+  staffList = rows.map(r => r.name);
+}
+
+async function loadWeekData(){
+  const rows = await sb('availability?select=staff_name,data,locked&week_start=eq.' + weekKey);
+  weekData = {};
+  rows.forEach(r => {
+    weekData[r.staff_name] = Object.assign({}, r.data || {}, { locked: !!r.locked });
+  });
+}
+
+// Save one person's row for this week
+async function saveStaffAvailability(name){
+  const entry = weekData[name] || {};
+  const data = {};
+  DAY_KEYS.forEach(k => { if(entry[k]) data[k] = entry[k]; });
   try{
-    localStorage.setItem(key, value);
+    setStatus('Saving…');
+    await sb('availability?on_conflict=week_start,staff_name', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: { week_start: weekKey, staff_name: name, data: data, locked: !!entry.locked }
+    });
     hideStorageWarning();
-    return true;
+    setStatus('✓ Saved');
   }catch(e){
-    console.error('Local storage save failed for', key, e);
+    console.error('Save failed', e);
     showStorageWarning();
-    return false;
   }
 }
-function loadStaffList(){
-  try{
-    const raw = localStorage.getItem('shift-staff-list');
-    staffList = raw ? JSON.parse(raw) : [];
-  }catch(e){ staffList = []; showStorageWarning(); }
-}
-function saveStaffList(){ return safeStorageSet('shift-staff-list', JSON.stringify(staffList)); }
 
-function loadWeekData(){
+async function refreshAll(){
   try{
-    const raw = localStorage.getItem('shift-availability:'+weekKey);
-    weekData = raw ? JSON.parse(raw) : {};
-  }catch(e){ weekData = {}; showStorageWarning(); }
+    await loadStaffList();
+    await loadWeekData();
+    hideStorageWarning();
+    setStatus('✓ Up to date');
+  }catch(e){
+    console.error('Load failed', e);
+    showStorageWarning();
+  }
+  renderStaffButtonGrid();
+  renderStaffManageList();
+  renderOverview();
 }
-function saveWeekData(){ return safeStorageSet('shift-availability:'+weekKey, JSON.stringify(weekData)); }
 
 // ---------- missing/status helpers ----------
 function dayIsSet(entry){
@@ -361,7 +408,6 @@ function renderStaffButtonGrid(){
 
 function openEditModal(name){
   currentStaff = name;
-  try{ localStorage.setItem('shiftAvailName', currentStaff); }catch(e){}
   editModalName.textContent = name;
   renderDayRows();
   editModal.classList.add('show');
@@ -369,6 +415,7 @@ function openEditModal(name){
 function closeEditModal(){
   editModal.classList.remove('show');
   renderStaffButtonGrid();
+  renderOverview();
 }
 closeEditModalBtn.addEventListener('click', closeEditModal);
 editModal.addEventListener('click', (e) => { if(e.target === editModal) closeEditModal(); });
@@ -444,7 +491,7 @@ function renderDayRows(){
     editBtn.textContent = 'Edit';
     editBtn.onclick = () => {
       weekData[currentStaff].locked = false;
-      saveWeekData();
+      saveStaffAvailability(currentStaff);
       renderDayRows();
     };
     footer.appendChild(editBtn);
@@ -454,7 +501,7 @@ function renderDayRows(){
     confirmBtn.textContent = 'Confirm availability';
     confirmBtn.onclick = () => {
       weekData[currentStaff].locked = true;
-      saveWeekData();
+      saveStaffAvailability(currentStaff);
       renderDayRows();
     };
     footer.appendChild(confirmBtn);
@@ -473,7 +520,7 @@ function toggleShift(dayKey, shiftKey){
   if(idx === -1) entry.shifts.push(shiftKey);
   else entry.shifts.splice(idx, 1);
   weekData[currentStaff][dayKey] = entry;
-  saveWeekData();
+  saveStaffAvailability(currentStaff);
   renderDayRows();
   renderOverview();
 }
@@ -488,7 +535,7 @@ function setAllDay(dayKey){
   } else {
     weekData[currentStaff][dayKey] = { status:'available', shifts: SHIFTS.map(s => s.key) };
   }
-  saveWeekData();
+  saveStaffAvailability(currentStaff);
   renderDayRows();
   renderOverview();
 }
@@ -503,7 +550,7 @@ function toggleUnavailable(dayKey){
   } else {
     weekData[currentStaff][dayKey] = { status:'unavailable', shifts:[] };
   }
-  saveWeekData();
+  saveStaffAvailability(currentStaff);
   renderDayRows();
   renderOverview();
 }
@@ -535,16 +582,24 @@ function renderOverview(){
   });
 }
 
-// ---------- add staff ----------
-addStaffBtn.addEventListener('click', () => {
+// ---------- add / remove staff ----------
+addStaffBtn.addEventListener('click', async () => {
   const name = newStaffName.value.trim();
   if(!name || staffList.includes(name)){ newStaffName.value=''; return; }
-  staffList.push(name);
   newStaffName.value = '';
+  try{
+    setStatus('Saving…');
+    await sb('staff', { method:'POST', headers:{ 'Prefer':'return=minimal' }, body:{ name: name } });
+    staffList.push(name);
+    hideStorageWarning();
+    setStatus('✓ Saved');
+  }catch(e){
+    console.error(e);
+    showStorageWarning();
+  }
   renderStaffButtonGrid();
   renderStaffManageList();
   renderOverview();
-  saveStaffList();
 });
 newStaffName.addEventListener('keydown', e => { if(e.key==='Enter') addStaffBtn.click(); });
 
@@ -566,19 +621,24 @@ function renderStaffManageList(){
   });
 }
 
-function removeStaff(name){
+async function removeStaff(name){
   if(!confirm(`Remove ${name}? This deletes their availability for this week too.`)) return;
-  staffList = staffList.filter(n => n !== name);
-  saveStaffList();
-
-  if(weekData[name]){
+  try{
+    setStatus('Saving…');
+    const enc = encodeURIComponent(name);
+    await sb('availability?staff_name=eq.' + enc + '&week_start=eq.' + weekKey, { method:'DELETE' });
+    await sb('staff?name=eq.' + enc, { method:'DELETE' });
+    staffList = staffList.filter(n => n !== name);
     delete weekData[name];
-    saveWeekData();
+    hideStorageWarning();
+    setStatus('✓ Saved');
+  }catch(e){
+    console.error(e);
+    showStorageWarning();
   }
 
   if(currentStaff === name){
     currentStaff = '';
-    try{ localStorage.removeItem('shiftAvailName'); }catch(e){}
     editModal.classList.remove('show');
   }
 
@@ -601,7 +661,8 @@ function showMissingModal(missing, isEmpty){
   reminderModal.classList.add('show');
 }
 dismissModalBtn.addEventListener('click', () => reminderModal.classList.remove('show'));
-checkMissingBtn.addEventListener('click', () => {
+checkMissingBtn.addEventListener('click', async () => {
+  await refreshAll();
   const missing = getMissingStaff();
   showMissingModal(missing, missing.length===0);
 });
@@ -688,22 +749,32 @@ exportPdfBtn.addEventListener('click', () => {
 });
 
 // ---------- init ----------
-function init(){
+async function init(){
   editingMonday = getEditingWeekMonday();
   weekKey = toKeyDate(editingMonday);
   weekDates = computeWeekDates(editingMonday);
   renderWeekRange();
 
-  loadStaffList();
-  loadWeekData();
-  renderStaffButtonGrid();
-  renderStaffManageList();
-  renderOverview();
+  if(SUPABASE_KEY.startsWith('PASTE_')){
+    setStatus('⚠️ Supabase key not set yet');
+    showStorageWarning();
+    storageWarningEl.textContent = '⚠️ Supabase key is missing. Open index.html and paste your anon key in SUPABASE_KEY.';
+    renderStaffButtonGrid();
+    renderOverview();
+    return;
+  }
+
+  await refreshAll();
 
   if(isPastDueWindow()){
     const missing = getMissingStaff();
     if(missing.length > 0) showMissingModal(missing, false);
   }
+
+  // Pull in other people's updates every 30 seconds (only when nobody is editing)
+  setInterval(() => {
+    if(!editModal.classList.contains('show')) refreshAll();
+  }, 30000);
 }
 init();
 </script>
