@@ -666,7 +666,7 @@ function renderOverview(){
       } else if(entry.status === 'unavailable'){
         html += `<td class="off">Off</td>`;
       } else if(entry.shifts.length === SHIFTS.length){
-        html += `<td style="color:var(--brass-dark);font-weight:700;">All Day</td>`;
+        html += `<td style="color:#8fe9ff;font-weight:700;">All Day</td>`;
       } else {
         const codes = entry.shifts.map(k => SHIFTS.find(s => s.key===k).short.split(' ')[0]).join(',');
         html += `<td>${codes}</td>`;
