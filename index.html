@@ -243,6 +243,17 @@
   .remove-staff-btn{ border-color:#ff5c7a; color:#ff8aa1; }
   .remove-staff-btn:hover{ background:rgba(255,92,122,.18); }
   select{ background:rgba(255,255,255,.07); color:#fff; border-color:var(--line); }
+
+  /* ===== Week navigation ===== */
+  .week-nav{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .week-nav-mid{ text-align:center; flex:1; }
+  .week-nav-mid .week-range{ font-size:15px; }
+  .week-tag{ display:inline-block; margin-top:4px; font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:3px 10px; border-radius:12px; background:rgba(255,255,255,.08); color:#cdd3ff; }
+  .week-tag.open{ background:var(--grad); color:#fff; }
+  .week-tag.past{ background:rgba(255,92,122,.18); color:#ff9db1; }
+  .week-arrow{ background:rgba(255,255,255,.08); border:1px solid var(--line); color:#fff; border-radius:8px; width:44px; height:40px; font-size:15px; cursor:pointer; flex-shrink:0; }
+  .week-arrow:hover{ background:var(--grad-soft); }
+  .week-arrow:disabled{ opacity:.3; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -271,12 +282,21 @@
       <h2>Update availability</h2>
       <button class="check-btn" id="checkMissingBtn">Check who's missing</button>
     </div>
-    <div class="week-range" id="weekRange"></div>
+    <div class="week-nav">
+      <button class="week-arrow" id="prevWeekBtn" title="Previous week">◀</button>
+      <div class="week-nav-mid">
+        <div class="week-range" id="weekRange"></div>
+        <div class="week-tag" id="weekTag"></div>
+      </div>
+      <button class="week-arrow" id="nextWeekBtn" title="Next week">▶</button>
+    </div>
+    <button class="check-btn" id="backToCurrentBtn" style="display:none;width:100%;margin-top:10px;">↩ Back to the week staff are filling in</button>
     <div class="staff-btn-grid" id="staffButtonGrid" style="margin-top:12px;"></div>
   </div>
 
   <div class="card">
-    <h2 style="margin-bottom:12px;">Overview — all staff</h2>
+    <h2 style="margin-bottom:6px;">Overview — all staff</h2>
+    <div class="week-range" id="overviewWeek" style="margin-bottom:10px;"></div>
     <div style="overflow-x:auto;">
       <table id="overviewTable"><thead><tr id="overviewHead"></tr></thead><tbody id="overviewBody"></tbody></table>
     </div>
@@ -331,7 +351,9 @@ const SHIFTS = [
 
 let staffList = [];
 let weekData = {};
-let editingMonday = null;
+let editingMonday = null;   // the week staff are filling in (next Monday)
+let weekOffset = 0;         // 0 = editing week, -1 = this week, -2 = last week ...
+const MIN_OFFSET = -12, MAX_OFFSET = 1;
 let weekKey = '';
 let weekDates = [];
 let currentStaff = '';
@@ -421,6 +443,7 @@ async function loadWeekData(){
 
 // Save one person's row for this week
 async function saveStaffAvailability(name){
+  if(isReadOnly()) return;
   const entry = weekData[name] || {};
   const data = {};
   DAY_KEYS.forEach(k => { if(entry[k]) data[k] = entry[k]; });
@@ -493,7 +516,7 @@ function renderStaffButtonGrid(){
     const btn = document.createElement('div');
     btn.className = 'staff-pick-btn';
     btn.innerHTML = `<span class="pick-name">${escapeHtml(name)}</span>` +
-      `<span class="pick-status ${locked ? 'confirmed' : 'pending'}">${locked ? '✓ Confirmed' : 'Tap to set hours'}</span>`;
+      `<span class="pick-status ${locked ? 'confirmed' : 'pending'}">${locked ? '✓ Confirmed' : (isReadOnly() ? 'Tap to view' : 'Tap to set hours')}</span>`;
     btn.onclick = () => openEditModal(name);
     staffButtonGrid.appendChild(btn);
   });
@@ -512,11 +535,48 @@ function closeEditModal(){
 }
 closeEditModalBtn.addEventListener('click', closeEditModal);
 editModal.addEventListener('click', (e) => { if(e.target === editModal) closeEditModal(); });
+// Weeks before the editing week are view-only so old records can't be changed by accident
+function isReadOnly(){ return weekOffset < 0; }
+
 function renderWeekRange(){
   const startLabel = weekDates[0].toLocaleDateString([], {month:'short', day:'numeric'});
   const endLabel = weekDates[6].toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'});
-  weekRangeEl.textContent = startLabel + ' – ' + endLabel;
+  const label = startLabel + ' – ' + endLabel;
+  weekRangeEl.textContent = label;
+  document.getElementById('overviewWeek').textContent = label;
+
+  const tag = document.getElementById('weekTag');
+  tag.className = 'week-tag';
+  if(weekOffset === 0){ tag.textContent = 'Next week · staff fill in'; tag.classList.add('open'); }
+  else if(weekOffset === 1){ tag.textContent = 'Week after next'; tag.classList.add('open'); }
+  else if(weekOffset === -1){ tag.textContent = 'This week · view only'; tag.classList.add('past'); }
+  else if(weekOffset === -2){ tag.textContent = 'Last week · view only'; tag.classList.add('past'); }
+  else { tag.textContent = (-weekOffset - 1) + ' weeks ago · view only'; tag.classList.add('past'); }
+
+  document.getElementById('prevWeekBtn').disabled = weekOffset <= MIN_OFFSET;
+  document.getElementById('nextWeekBtn').disabled = weekOffset >= MAX_OFFSET;
+  document.getElementById('backToCurrentBtn').style.display = (weekOffset === 0) ? 'none' : 'block';
+  checkMissingBtn.style.display = isReadOnly() ? 'none' : '';
 }
+
+async function goToWeek(offset){
+  if(offset < MIN_OFFSET || offset > MAX_OFFSET) return;
+  weekOffset = offset;
+  const monday = new Date(editingMonday);
+  monday.setDate(editingMonday.getDate() + 7 * offset);
+  weekKey = toKeyDate(monday);
+  weekDates = computeWeekDates(monday);
+  currentStaff = '';
+  editModal.classList.remove('show');
+  renderWeekRange();
+  weekData = {};
+  renderStaffButtonGrid();
+  renderOverview();
+  await refreshAll();
+}
+document.getElementById('prevWeekBtn').addEventListener('click', () => goToWeek(weekOffset - 1));
+document.getElementById('nextWeekBtn').addEventListener('click', () => goToWeek(weekOffset + 1));
+document.getElementById('backToCurrentBtn').addEventListener('click', () => goToWeek(0));
 
 function renderDayRows(){
   dayRows.innerHTML = '';
@@ -525,7 +585,7 @@ function renderDayRows(){
     return;
   }
   if(!weekData[currentStaff]) weekData[currentStaff] = {};
-  const locked = !!weekData[currentStaff].locked;
+  const locked = !!weekData[currentStaff].locked || isReadOnly();
 
   DAY_KEYS.forEach((dayKey, i) => {
     const entry = weekData[currentStaff][dayKey] || { status:'available', shifts:[] };
@@ -574,7 +634,13 @@ function renderDayRows(){
 
   const footer = document.createElement('div');
   footer.className = 'confirm-footer';
-  if(locked){
+  if(isReadOnly()){
+    const banner = document.createElement('div');
+    banner.className = 'confirmed-banner';
+    banner.style.cssText = 'background:rgba(255,92,122,.14);border-color:#ff5c7a;color:#ff9db1;margin-bottom:0;';
+    banner.innerHTML = `<span>👁 View only — this week has passed</span>`;
+    footer.appendChild(banner);
+  } else if(locked){
     const banner = document.createElement('div');
     banner.className = 'confirmed-banner';
     banner.innerHTML = `<span>✓ Confirmed — you can't change this unless you edit it</span>`;
@@ -603,6 +669,7 @@ function renderDayRows(){
 }
 
 function toggleShift(dayKey, shiftKey){
+  if(isReadOnly()) return;
   if(!weekData[currentStaff]) weekData[currentStaff] = {};
   if(weekData[currentStaff].locked) return;
   let entry = weekData[currentStaff][dayKey];
@@ -619,6 +686,7 @@ function toggleShift(dayKey, shiftKey){
 }
 
 function setAllDay(dayKey){
+  if(isReadOnly()) return;
   if(!weekData[currentStaff]) weekData[currentStaff] = {};
   if(weekData[currentStaff].locked) return;
   const entry = weekData[currentStaff][dayKey];
@@ -634,6 +702,7 @@ function setAllDay(dayKey){
 }
 
 function toggleUnavailable(dayKey){
+  if(isReadOnly()) return;
   if(!weekData[currentStaff]) weekData[currentStaff] = {};
   if(weekData[currentStaff].locked) return;
   const entry = weekData[currentStaff][dayKey];
