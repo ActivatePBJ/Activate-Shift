@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shift Availability</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;500;600;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -254,15 +257,359 @@
   .week-arrow{ background:rgba(255,255,255,.08); border:1px solid var(--line); color:#fff; border-radius:8px; width:44px; height:40px; font-size:15px; cursor:pointer; flex-shrink:0; }
   .week-arrow:hover{ background:var(--grad-soft); }
   .week-arrow:disabled{ opacity:.3; cursor:not-allowed; }
+
+  /* ===== Presets + hours ===== */
+  .preset-grid{ grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); }
+  .custom-grid{ margin-top:8px; padding-top:8px; border-top:1px dashed var(--line); }
+  .day-summary{ font-size:12.5px; font-weight:700; color:#8a93d6; text-align:right; }
+  .day-summary.set{ color:#8fe9ff; }
+  .day-summary.off{ color:#ff6b8b; }
+  .shift-btn.off.selected{ background:linear-gradient(135deg,#ff5c7a,#ff4fa3); }
+  .shift-btn.custom-open{ border-color:#ff86c4; }
+  .ov-hours{ font-weight:700; font-size:11.5px; }
+  .ov-label{ font-size:9.5px; color:#9aa3e6; margin-top:2px; }
+  td.avail-any .ov-hours{ color:#8fe9ff; }
+
+  /* ===== SYSTEM window layout, Activate colours (navy + blue / purple / pink) ===== */
+  :root{
+    --ink:#0b1030; --ink-soft:#aab4ff; --paper:#161b45;
+    --brass:#ff4fa3; --brass-dark:#ff86c4;
+    --green:#3ee0c0; --green-bg:rgba(62,224,192,.14);
+    --red:#ff5c7a; --red-bg:rgba(255,92,122,.16);
+    --line:rgba(140,150,255,.28);
+    --grad:linear-gradient(135deg,#2f7bff 0%,#7a4dff 50%,#ff4fa3 100%);
+    --grad-soft:linear-gradient(135deg,rgba(47,123,255,.28),rgba(122,77,255,.28) 55%,rgba(255,79,163,.28));
+    --text:#eef0ff;
+  }
+  body{
+    font-family:'Exo 2','Segoe UI',-apple-system,sans-serif;
+    background:
+      radial-gradient(900px 500px at 8% -5%, rgba(47,123,255,.35), transparent 60%),
+      radial-gradient(800px 500px at 100% 0%, rgba(255,79,163,.28), transparent 60%),
+      radial-gradient(900px 600px at 50% 110%, rgba(122,77,255,.30), transparent 60%),
+      #070a1f;
+    background-attachment:fixed;
+    color:var(--text);
+  }
+  /* faint HUD grid + scanlines (non-interactive) */
+  body::before{
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(rgba(140,150,255,.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(140,150,255,.06) 1px, transparent 1px);
+    background-size:38px 38px;
+  }
+  body::after{
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:100; opacity:.22;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.35) 0 1px, transparent 1px 3px);
+  }
+  .wrap{ position:relative; z-index:1; }
+
+  .masthead{ border-bottom:2px solid transparent; border-image:linear-gradient(90deg,#2f7bff,#7a4dff,#ff4fa3) 1; }
+  .masthead .eyebrow{
+    font-family:'Orbitron','Exo 2',sans-serif; color:#35d3ff; letter-spacing:.45em; font-size:12px;
+    text-shadow:0 0 10px #35d3ff; animation:sysPulse 2.6s ease-in-out infinite;
+  }
+  .masthead h1{
+    font-family:'Orbitron','Exo 2',sans-serif; font-weight:900; font-size:clamp(20px,6vw,30px);
+    letter-spacing:.12em; text-transform:uppercase;
+    background:var(--grad); -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent; color:transparent;
+    filter:drop-shadow(0 0 10px rgba(122,77,255,.7));
+  }
+  .masthead .sub{ color:#b9c0ff; letter-spacing:.2em; }
+  @keyframes sysPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.55; } }
+  @media (prefers-reduced-motion: reduce){ .masthead .eyebrow{ animation:none; } }
+  #statusBar{ color:#8fe9ff; letter-spacing:.1em; text-transform:uppercase; font-size:11px; }
+
+  /* panels = system windows with corner brackets */
+  .card, .modal{
+    position:relative; border-radius:4px; color:var(--text);
+    border:1px solid rgba(140,150,255,.5);
+    box-shadow:0 0 20px rgba(122,77,255,.28), inset 0 0 24px rgba(122,77,255,.08);
+  }
+  .card{ background:linear-gradient(160deg, rgba(27,33,84,.92), rgba(16,20,52,.94)); }
+  .modal{ background:linear-gradient(160deg,#1b2154,#0f1338); }
+  .card::before, .card::after, .modal::before, .modal::after{
+    content:''; position:absolute; width:14px; height:14px; pointer-events:none;
+    border:2px solid #8fe9ff; filter:drop-shadow(0 0 4px #7a4dff);
+  }
+  .card::before, .modal::before{ top:-2px; left:-2px; border-right:none; border-bottom:none; }
+  .card::after, .modal::after{ bottom:-2px; right:-2px; border-left:none; border-top:none; }
+  .modal-overlay{ background:rgba(3,5,20,.82); }
+
+  h2{
+    font-family:'Orbitron','Exo 2',sans-serif; font-size:13px; letter-spacing:.2em; color:#8fe9ff;
+    text-shadow:0 0 8px rgba(53,211,255,.7);
+  }
+  h2::before{ content:'◆ '; color:#ff4fa3; }
+  .week-range{ color:#ff86c4; }
+  .modal h3{ font-family:'Orbitron','Exo 2',sans-serif; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:#eef0ff; text-shadow:0 0 8px rgba(122,77,255,.8); }
+  .modal p{ color:#b9c0ff; }
+  .modal .icon{ filter:drop-shadow(0 0 8px #ff4fa3); }
+  .modal .missing-list{ background:rgba(255,255,255,.06); border:1px solid var(--line); border-radius:3px; color:var(--text); }
+  .edit-modal-header{ border-bottom:2px solid transparent; border-image:linear-gradient(90deg,#2f7bff,#7a4dff,#ff4fa3) 1; }
+  .edit-modal-name{ font-family:'Orbitron','Exo 2',sans-serif; font-size:16px; letter-spacing:.12em; text-transform:uppercase; color:#eef0ff; text-shadow:0 0 8px rgba(122,77,255,.8); }
+  .modal .edit-modal-close{
+    width:32px; height:32px; padding:0; border-radius:3px; letter-spacing:0;
+    background:rgba(255,255,255,.1); border:1px solid var(--line); color:#fff; box-shadow:none;
+  }
+
+  /* buttons */
+  .add-row input{ background:rgba(255,255,255,.07); border:1px solid var(--line); color:#fff; border-radius:3px; }
+  .add-row input::placeholder{ color:#8a93d6; }
+  .add-row input:focus{ outline:none; border-color:#8fe9ff; box-shadow:0 0 10px rgba(53,211,255,.5); }
+  .add-row button, .modal button, .btn-brass, .btn-primary{
+    background:var(--grad); border:1px solid rgba(255,255,255,.22); color:#fff; border-radius:3px;
+    letter-spacing:.1em; text-transform:uppercase;
+    box-shadow:0 6px 18px rgba(122,77,255,.4);
+  }
+  .modal .edit-modal-close{ background:rgba(255,255,255,.1); border:1px solid var(--line); box-shadow:none; }
+  .btn-secondary, .check-btn, .toggle-list-btn{
+    background:rgba(255,255,255,.06); border:1px solid var(--line); color:#cdd3ff;
+    border-radius:3px; letter-spacing:.08em; text-transform:uppercase; box-shadow:none;
+  }
+  .btn-secondary:hover, .check-btn:hover, .toggle-list-btn:hover{ background:rgba(122,77,255,.25); }
+  .remove-staff-btn{ border-color:#ff5c7a; color:#ff8aa1; border-radius:3px; }
+  .week-arrow{ background:rgba(255,255,255,.08); border:1px solid var(--line); color:#fff; border-radius:3px; }
+  .week-arrow:hover{ background:var(--grad-soft); }
+  .week-tag{ background:rgba(255,255,255,.08); border:1px solid var(--line); color:#cdd3ff; border-radius:3px; letter-spacing:.14em; }
+  .week-tag.open{ background:var(--grad); border-color:transparent; color:#fff; }
+  .week-tag.past{ background:rgba(255,92,122,.18); border-color:rgba(255,92,122,.5); color:#ff9db1; }
+
+  /* staff tiles */
+  .staff-pick-btn{ background:rgba(255,255,255,.06); border:1px solid var(--line); border-radius:3px; color:var(--text); }
+  .staff-pick-btn:hover{ transform:none; background:var(--grad-soft); border-color:rgba(190,170,255,.7); box-shadow:0 0 16px rgba(122,77,255,.45); }
+  .staff-pick-btn .pick-name{ letter-spacing:.06em; text-transform:uppercase; }
+  .staff-pick-btn .pick-status.pending{ color:#8a93d6; }
+  .staff-pick-btn .pick-status.confirmed{ color:#3ee0c0; text-shadow:0 0 6px rgba(62,224,192,.6); }
+
+  /* availability picker */
+  .day-name{ letter-spacing:.08em; text-transform:uppercase; }
+  .day-date{ color:#8a93d6; }
+  .day-summary.set{ color:#8fe9ff; text-shadow:0 0 6px rgba(53,211,255,.5); }
+  .day-summary.off{ color:#ff6b8b; }
+  .shift-btn{ background:rgba(255,255,255,.06); border:1px solid var(--line); border-radius:3px; color:var(--text); }
+  .shift-btn:hover{ transform:none; background:rgba(122,77,255,.22); border-color:rgba(190,170,255,.6); box-shadow:0 0 10px rgba(122,77,255,.4); }
+  .shift-btn .shift-time{ color:#9aa3e6; }
+  .shift-btn.selected{
+    background:var(--grad); border-color:transparent;
+    box-shadow:0 0 16px rgba(122,77,255,.6), inset 0 0 12px rgba(255,255,255,.14);
+  }
+  .shift-btn.selected .shift-name, .shift-btn.selected .shift-time{ color:#fff; text-shadow:0 0 6px rgba(255,255,255,.6); }
+  .shift-btn.off.selected{
+    background:linear-gradient(135deg,#ff5c7a,#ff4fa3); border-color:transparent;
+    box-shadow:0 0 16px rgba(255,79,163,.55), inset 0 0 12px rgba(255,255,255,.14);
+  }
+  .shift-btn.custom-open{ border-color:#ff86c4; box-shadow:0 0 10px rgba(255,79,163,.35); }
+  .custom-grid{ border-top:1px dashed rgba(140,150,255,.4); }
+  .day-row{ border-bottom:1px solid rgba(140,150,255,.2); }
+  .confirmed-banner{ background:rgba(62,224,192,.14); border:1px solid #3ee0c0; color:#3ee0c0; border-radius:3px; }
+
+  /* overview table */
+  table{ border-collapse:separate; border-spacing:0; }
+  th{
+    background:linear-gradient(135deg,#1e2f7a,#4b2aa8 55%,#a0276f); color:#fff;
+    font-family:'Orbitron','Exo 2',sans-serif; letter-spacing:.08em;
+    border-color:rgba(255,255,255,.14); text-shadow:0 0 6px rgba(255,255,255,.4);
+  }
+  td{ border-color:var(--line); color:var(--text); }
+  tbody tr:nth-child(even) td{ background:rgba(255,255,255,.035); }
+  td.name-col{ letter-spacing:.04em; }
+  td.off{ color:#ff6b8b; text-shadow:0 0 6px rgba(255,92,122,.5); }
+  td.unset{ color:#6b74b5; }
+  .ov-hours{ color:#eef0ff; }
+  .ov-label{ color:#9aa3e6; }
+  td.avail-any .ov-hours{ color:#8fe9ff; text-shadow:0 0 8px rgba(53,211,255,.7); }
+  .legend, .footer-note, .empty{ color:#8a93d6; }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:rgba(255,255,255,.04); }
+  ::-webkit-scrollbar-thumb{ background:rgba(140,150,255,.45); border-radius:4px; }
+
+  /* ===== Press effects (every button / tile) ===== */
+  button, .shift-btn, .staff-pick-btn, .week-arrow{
+    transition:transform .08s ease, filter .08s ease, box-shadow .15s, background .15s, border-color .15s;
+    -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none;
+  }
+  button:active:not(:disabled), .shift-btn:active, .staff-pick-btn:active, .week-arrow:active:not(:disabled){
+    transform:scale(.95); filter:brightness(1.55) saturate(1.2);
+  }
+  .fx-layer{ position:fixed; inset:0; pointer-events:none; z-index:120; overflow:hidden; }
+  .fx-frame{
+    position:absolute; border:1px solid #8fe9ff; border-radius:4px;
+    box-shadow:0 0 14px #7a4dff, inset 0 0 16px rgba(143,233,255,.55);
+    animation:fxFrame .6s ease-out forwards;
+  }
+  @keyframes fxFrame{
+    0%{ opacity:1; transform:scale(1); }
+    100%{ opacity:0; transform:scale(1.16); box-shadow:0 0 36px #ff4fa3, inset 0 0 0 transparent; }
+  }
+  .fx-ripple{
+    position:absolute; border-radius:50%; border:2px solid #8fe9ff;
+    background:radial-gradient(circle, rgba(143,233,255,.5), rgba(122,77,255,.3) 45%, transparent 70%);
+    animation:fxRipple .65s ease-out forwards;
+  }
+  @keyframes fxRipple{
+    from{ transform:translate(-50%,-50%) scale(0); opacity:1; }
+    to{ transform:translate(-50%,-50%) scale(1); opacity:0; }
+  }
+  .fx-spark{
+    position:absolute; width:4px; height:4px; border-radius:50%; background:#fff;
+    box-shadow:0 0 8px #8fe9ff, 0 0 14px #7a4dff;
+    animation:fxSpark .65s ease-out forwards;
+  }
+  @keyframes fxSpark{
+    from{ transform:translate(-50%,-50%) scale(1); opacity:1; }
+    to{ transform:translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.2); opacity:0; }
+  }
+  .sys-toast{
+    position:fixed; top:16px; left:50%; transform:translate(-50%,-30px); opacity:0; z-index:130;
+    padding:10px 18px; border:1px solid rgba(190,170,255,.7); border-radius:4px;
+    background:linear-gradient(180deg,rgba(27,33,84,.97),rgba(10,14,40,.98)); color:#eef0ff;
+    font-family:'Orbitron','Exo 2',sans-serif; font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+    box-shadow:0 0 24px rgba(122,77,255,.6); white-space:nowrap; pointer-events:none;
+    transition:transform .25s ease, opacity .25s ease;
+  }
+  .sys-toast.show{ transform:translate(-50%,0); opacity:1; }
+  .sys-toast b{ color:#ff86c4; }
+
+  /* header row = one gradient across the whole row (size/offset set per cell by paintHeader) */
+  #overviewHead th{
+    background-image:linear-gradient(90deg,#2a5fd6 0%,#6a40e0 55%,#d63f93 100%);
+    background-repeat:no-repeat;
+  }
+
+  /* ===== Glowing section titles + breathing panel glow ===== */
+  h2{
+    position:relative; padding-bottom:9px; color:#d9f6ff;
+    text-shadow:0 0 6px #8fe9ff, 0 0 14px rgba(53,211,255,.85), 0 0 30px rgba(122,77,255,.75);
+    animation:titleGlow 3.2s ease-in-out infinite;
+  }
+  h2::before{ text-shadow:0 0 10px #ff4fa3, 0 0 20px #ff4fa3; }
+  h2::after{
+    content:''; position:absolute; left:0; bottom:0; width:100%; height:2px;
+    background:linear-gradient(90deg,#8fe9ff,#7a4dff 60%,transparent);
+    box-shadow:0 0 8px #35d3ff, 0 0 16px rgba(122,77,255,.7);
+  }
+  @keyframes titleGlow{
+    0%,100%{ text-shadow:0 0 6px #8fe9ff, 0 0 14px rgba(53,211,255,.85), 0 0 30px rgba(122,77,255,.75); }
+    50%{ text-shadow:0 0 4px #8fe9ff, 0 0 9px rgba(53,211,255,.55), 0 0 18px rgba(122,77,255,.45); }
+  }
+  .card{ animation:panelGlow 4.2s ease-in-out infinite; border-color:rgba(143,233,255,.5); }
+  @keyframes panelGlow{
+    0%,100%{ box-shadow:0 0 26px rgba(122,77,255,.42), 0 0 8px rgba(143,233,255,.3), inset 0 0 24px rgba(122,77,255,.1); }
+    50%{ box-shadow:0 0 16px rgba(122,77,255,.26), 0 0 4px rgba(143,233,255,.18), inset 0 0 16px rgba(122,77,255,.06); }
+  }
+  @media (prefers-reduced-motion: reduce){ h2, .card{ animation:none; } }
+
+  /* ===== "Who's missing" popup: pop + shake ===== */
+  @keyframes sysShake{
+    0%{ opacity:.3; transform:scale(.92); }
+    12%{ opacity:1; transform:translateX(-8px) scale(1); }
+    28%{ transform:translateX(7px); }
+    44%{ transform:translateX(-5px); }
+    60%{ transform:translateX(4px); }
+    78%{ transform:translateX(-2px); }
+    100%{ transform:translateX(0); }
+  }
+  .modal.shake{
+    animation:sysShake .5s cubic-bezier(.36,.07,.19,.97);
+    border-color:rgba(255,120,150,.85);
+    box-shadow:0 0 34px rgba(255,92,122,.6), inset 0 0 24px rgba(255,92,122,.12);
+  }
+
+  /* ===== Remove-staff warning: red alarm / system failure ===== */
+  .danger-overlay{
+    background:rgba(40,0,8,.88);
+    box-shadow:inset 0 0 140px rgba(255,40,70,.55);
+  }
+  .danger-overlay.show{ animation:alarmPulse 1.1s ease-in-out infinite; }
+  .danger-overlay::after{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(255,0,40,.08) 0 2px, transparent 2px 5px);
+  }
+  @keyframes alarmPulse{
+    0%,100%{ background:rgba(40,0,8,.88); box-shadow:inset 0 0 120px rgba(255,40,70,.4); }
+    50%{ background:rgba(95,0,22,.9); box-shadow:inset 0 0 190px rgba(255,40,70,.75); }
+  }
+  .danger-modal{
+    border:1px solid #ff3d5a;
+    background:linear-gradient(160deg,#2c0610,#14030a);
+    box-shadow:0 0 36px rgba(255,61,90,.75), inset 0 0 30px rgba(255,61,90,.2);
+    animation:dangerFlicker 2.4s infinite;
+  }
+  .danger-modal.shake{
+    animation:sysShake .5s cubic-bezier(.36,.07,.19,.97), dangerFlicker 2.4s .5s infinite;
+    border-color:#ff6b84;
+  }
+  .danger-modal::before, .danger-modal::after{ border-color:#ff6b84; filter:drop-shadow(0 0 6px #ff3d5a); }
+  @keyframes dangerFlicker{
+    0%,88%,92%,100%{ opacity:1; }
+    90%{ opacity:.72; }
+    94%{ opacity:.85; }
+    96%{ opacity:.65; }
+  }
+  .danger-tag{ font-family:'Orbitron','Exo 2',sans-serif; font-size:10px; letter-spacing:.3em; color:#ff3d5a; text-shadow:0 0 8px #ff3d5a; margin-bottom:6px; animation:sysPulse 1s ease-in-out infinite; }
+  .danger-modal .icon{ filter:drop-shadow(0 0 10px #ff3d5a); animation:iconThrob .9s ease-in-out infinite; }
+  @keyframes iconThrob{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.18); } }
+  .danger-modal p{ color:#ffb3c0; }
+  .danger-modal p b{ color:#fff; text-shadow:0 0 8px rgba(255,61,90,.8); }
+  .danger-actions{ display:flex; gap:10px; }
+  .danger-modal button{ flex:1; width:auto; }
+  .danger-modal .btn-cancel{ background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.3); color:#ffd5dc; box-shadow:none; }
+  .danger-modal .btn-danger{
+    background:linear-gradient(180deg,#ff3d5a,#a8102a); border:1px solid #ff8aa0; color:#fff;
+    box-shadow:0 0 20px rgba(255,61,90,.65);
+  }
+  /* glitching title: red text with cyan / pink ghost layers that jitter */
+  .danger-modal h3.glitch{ position:relative; color:#ff5c7a; text-shadow:0 0 12px #ff3d5a; animation:glitchJit 1.2s infinite steps(1); }
+  .glitch::before, .glitch::after{ content:attr(data-text); position:absolute; left:0; top:0; width:100%; }
+  .glitch::before{ color:#35d3ff; animation:glitchA 1.3s infinite steps(1); mix-blend-mode:screen; }
+  .glitch::after{ color:#ff4fa3; animation:glitchB 1.1s infinite steps(1); mix-blend-mode:screen; }
+  @keyframes glitchJit{
+    0%,100%{ transform:translate(0); } 20%{ transform:translate(-2px,1px); } 40%{ transform:translate(2px,-1px); }
+    60%{ transform:translate(0); } 80%{ transform:translate(1px,1px); }
+  }
+  @keyframes glitchA{
+    0%{ clip-path:inset(0 0 70% 0); transform:translate(-3px,0); }
+    20%{ clip-path:inset(40% 0 30% 0); transform:translate(3px,0); }
+    40%{ clip-path:inset(10% 0 60% 0); transform:translate(-2px,0); }
+    60%{ clip-path:inset(60% 0 10% 0); transform:translate(2px,0); }
+    80%{ clip-path:inset(25% 0 45% 0); transform:translate(-3px,0); }
+    100%{ clip-path:inset(0 0 70% 0); transform:translate(0); }
+  }
+  @keyframes glitchB{
+    0%{ clip-path:inset(60% 0 10% 0); transform:translate(3px,0); }
+    25%{ clip-path:inset(5% 0 70% 0); transform:translate(-3px,0); }
+    50%{ clip-path:inset(35% 0 35% 0); transform:translate(2px,0); }
+    75%{ clip-path:inset(70% 0 5% 0); transform:translate(-2px,0); }
+    100%{ clip-path:inset(60% 0 10% 0); transform:translate(0); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .danger-overlay.show, .danger-modal, .danger-modal.shake, .danger-tag, .danger-modal .icon,
+    .danger-modal h3.glitch, .glitch::before, .glitch::after{ animation:none; }
+  }
+
+  /* ===== Big "availability confirmed" system notice (3x) ===== */
+  .sys-toast{
+    top:14px; width:92vw; max-width:760px; text-align:center; white-space:normal;
+    padding:30px 24px; border-width:2px; border-radius:6px;
+    font-size:min(36px, 6.6vw); line-height:1.25; letter-spacing:.1em;
+    transform:translate(-50%,-90px);
+    box-shadow:0 0 40px rgba(122,77,255,.75), 0 0 90px rgba(255,79,163,.35), inset 0 0 30px rgba(122,77,255,.2);
+  }
+  .sys-toast .tt{ font-size:.42em; letter-spacing:.4em; color:#ff86c4; text-shadow:0 0 10px #ff4fa3; margin-bottom:.5em; }
+  .sys-toast .tm{ font-weight:900; color:#eaf8ff; text-shadow:0 0 8px #8fe9ff, 0 0 22px #35d3ff, 0 0 44px rgba(122,77,255,.9); }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <div class="masthead">
-    <div class="eyebrow">Shop Floor</div>
+    <div class="eyebrow">[ SYSTEM ]</div>
     <h1>Shift Availability</h1>
-    <div class="sub">Pick the shifts you can work each day</div>
+    <div class="sub">Daily quest — set the hours you can work</div>
   </div>
 
   <div id="statusBar">Loading…</div>
@@ -300,7 +647,7 @@
     <div style="overflow-x:auto;">
       <table id="overviewTable"><thead><tr id="overviewHead"></tr></thead><tbody id="overviewBody"></tbody></table>
     </div>
-    <div class="legend">O = Opening (8–4) · M1 = Mid-Day (9–6) · M2 = Mid-Day (12–9) · C = Closing (3–11)</div>
+    <div class="legend">Times show the hours each person can work. Shop hours are 8am–11pm.</div>
     <button class="btn btn-brass" id="exportPdfBtn" style="margin-top:16px;">Save as PDF roster</button>
   </div>
 
@@ -321,9 +668,22 @@
   </div>
 </div>
 
+<div class="modal-overlay danger-overlay" id="removeModal">
+  <div class="modal danger-modal">
+    <div class="danger-tag">[ ERROR · DATA LOSS ]</div>
+    <div class="icon">⚠️</div>
+    <h3 class="glitch" data-text="System warning">System warning</h3>
+    <p id="removeModalText"></p>
+    <div class="danger-actions">
+      <button id="removeCancelBtn" class="btn-cancel">Cancel</button>
+      <button id="removeConfirmBtn" class="btn-danger">Remove</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="reminderModal">
   <div class="modal">
-    <div class="icon">⏰</div>
+    <div class="icon">⚠️</div>
     <h3 id="modalTitle">Availability still missing</h3>
     <p id="modalSub">It's past the Saturday deadline and next week's schedule needs these staff to be marked:</p>
     <div class="missing-list" id="missingList"></div>
@@ -343,10 +703,10 @@ const DAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
 const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
 const SHIFTS = [
-  { key:'opening', name:'Opening',  time:'8:00 AM – 4:00 PM',  short:'O 8-4',   hours:'8am–4pm'   },
-  { key:'midday1', name:'Mid-Day',  time:'9:00 AM – 6:00 PM',  short:'M1 9-6',  hours:'9am–6pm'   },
-  { key:'midday2', name:'Mid-Day',  time:'12:00 PM – 9:00 PM', short:'M2 12-9', hours:'12pm–9pm'  },
-  { key:'closing', name:'Closing',  time:'3:00 PM – 11:00 PM', short:'C 3-11',  hours:'3pm–11pm'  }
+  { key:'opening', name:'Opening',        time:'8:00 AM – 4:00 PM',  short:'O 8-4',   hours:'8am–4pm',  start:8,  end:16 },
+  { key:'midday1', name:'Early Mid-Day',  time:'9:00 AM – 6:00 PM',  short:'M1 9-6',  hours:'9am–6pm',  start:9,  end:18 },
+  { key:'midday2', name:'Late Mid-Day',   time:'12:00 PM – 9:00 PM', short:'M2 12-9', hours:'12pm–9pm', start:12, end:21 },
+  { key:'closing', name:'Closing',        time:'3:00 PM – 11:00 PM', short:'C 3-11',  hours:'3pm–11pm', start:15, end:23 }
 ];
 
 let staffList = [];
@@ -524,6 +884,7 @@ function renderStaffButtonGrid(){
 
 function openEditModal(name){
   currentStaff = name;
+  customOpen = {};
   editModalName.textContent = name;
   renderDayRows();
   editModal.classList.add('show');
@@ -578,6 +939,43 @@ document.getElementById('prevWeekBtn').addEventListener('click', () => goToWeek(
 document.getElementById('nextWeekBtn').addEventListener('click', () => goToWeek(weekOffset + 1));
 document.getElementById('backToCurrentBtn').addEventListener('click', () => goToWeek(0));
 
+// ---------- availability presets (staff pick one, or go Custom) ----------
+const PRESETS = [
+  { id:'any',      label:'Anytime',      shifts:['opening','midday1','midday2','closing'] },
+  { id:'notclose', label:'Not closing',  shifts:['opening','midday1','midday2'] },
+  { id:'open',     label:'Opening only', shifts:['opening'] },
+  { id:'close',    label:'Closing only', shifts:['closing'] }
+];
+let customOpen = {};   // which days currently show the custom shift buttons
+
+function fmtHour(h){
+  if(h === 12) return '12pm';
+  return h < 12 ? h + 'am' : (h - 12) + 'pm';
+}
+// Every shift overlaps the next one, so any combination is one continuous window
+function hoursOf(keys){
+  const list = keys.map(k => SHIFTS.find(s => s.key === k));
+  const start = Math.min(...list.map(s => s.start));
+  const end = Math.max(...list.map(s => s.end));
+  return fmtHour(start) + '–' + fmtHour(end);
+}
+function sameSet(a, b){ return a.length === b.length && a.every(x => b.includes(x)); }
+function presetOf(entry){
+  if(!entry) return null;
+  if(entry.status === 'unavailable') return 'off';
+  if(!Array.isArray(entry.shifts) || entry.shifts.length === 0) return null;
+  const p = PRESETS.find(p => sameSet(p.shifts, entry.shifts));
+  return p ? p.id : 'custom';
+}
+// { id, label, hours } for a set day, otherwise null
+function describeEntry(entry){
+  const id = presetOf(entry);
+  if(!id) return null;
+  if(id === 'off') return { id, label:'Off', hours:'' };
+  const p = PRESETS.find(p => p.id === id);
+  return { id, label: p ? p.label : 'Custom', hours: hoursOf(entry.shifts) };
+}
+
 function renderDayRows(){
   dayRows.innerHTML = '';
   if(!currentStaff){
@@ -589,47 +987,61 @@ function renderDayRows(){
 
   DAY_KEYS.forEach((dayKey, i) => {
     const entry = weekData[currentStaff][dayKey] || { status:'available', shifts:[] };
-    const isUnavailable = entry.status === 'unavailable';
+    const pid = presetOf(entry);
+    const showCustom = pid === 'custom' || !!customOpen[dayKey];
+    const desc = describeEntry(entry);
 
     const row = document.createElement('div');
     row.className = 'day-row' + (locked ? ' locked' : '');
 
+    const summaryText = desc ? (desc.hours ? desc.label + ' · ' + desc.hours : desc.label) : 'Not set';
+    const summaryClass = desc ? (pid === 'off' ? 'off' : 'set') : '';
     const top = document.createElement('div');
     top.className = 'day-row-top';
-    top.innerHTML = `<div class="day-name">${DAY_LABELS[i]} <span class="day-date">${weekDates[i].getDate()}</span></div>`;
-
-    const unavailBtn = document.createElement('button');
-    unavailBtn.className = 'unavail-btn' + (isUnavailable ? ' active' : '');
-    unavailBtn.textContent = isUnavailable ? 'Not available ✓' : 'Not available';
-
-    const allDayBtn = document.createElement('button');
-    const allSelected = !isUnavailable && entry.shifts && entry.shifts.length === SHIFTS.length;
-    allDayBtn.className = 'allday-btn' + (allSelected ? ' active' : '');
-    allDayBtn.textContent = allSelected ? 'All Day ✓' : 'All Day';
-
-    const btnGroup = document.createElement('div');
-    btnGroup.className = 'day-btn-group';
-    btnGroup.appendChild(allDayBtn);
-    btnGroup.appendChild(unavailBtn);
-    top.appendChild(btnGroup);
+    top.innerHTML = `<div class="day-name">${DAY_LABELS[i]} <span class="day-date">${weekDates[i].getDate()}</span></div>` +
+      `<div class="day-summary ${summaryClass}">${summaryText}</div>`;
     row.appendChild(top);
 
     const grid = document.createElement('div');
-    grid.className = 'shift-grid' + (isUnavailable ? ' disabled' : '');
+    grid.className = 'shift-grid preset-grid';
 
-    SHIFTS.forEach(shift => {
+    PRESETS.forEach(p => {
       const btn = document.createElement('div');
-      const selected = !isUnavailable && entry.shifts && entry.shifts.includes(shift.key);
+      const selected = pid === p.id;
       btn.className = 'shift-btn' + (selected ? ' selected' : '');
-      btn.innerHTML = `<span class="shift-name">${selected ? '✓ ' : ''}${shift.name}</span><span class="shift-time">${shift.time}</span>`;
-      btn.onclick = () => toggleShift(dayKey, shift.key);
+      btn.innerHTML = `<span class="shift-name">${selected ? '✓ ' : ''}${p.label}</span><span class="shift-time">${hoursOf(p.shifts)}</span>`;
+      btn.onclick = () => setPreset(dayKey, p.id);
       grid.appendChild(btn);
     });
-    row.appendChild(grid);
-    dayRows.appendChild(row);
 
-    unavailBtn.onclick = () => toggleUnavailable(dayKey);
-    allDayBtn.onclick = () => setAllDay(dayKey);
+    const offBtn = document.createElement('div');
+    offBtn.className = 'shift-btn off' + (pid === 'off' ? ' selected' : '');
+    offBtn.innerHTML = `<span class="shift-name">${pid === 'off' ? '✓ ' : ''}Off</span><span class="shift-time">Not available</span>`;
+    offBtn.onclick = () => setPreset(dayKey, 'off');
+    grid.appendChild(offBtn);
+
+    const customBtn = document.createElement('div');
+    customBtn.className = 'shift-btn' + (pid === 'custom' ? ' selected' : (showCustom ? ' custom-open' : ''));
+    customBtn.innerHTML = `<span class="shift-name">${pid === 'custom' ? '✓ ' : ''}Custom</span><span class="shift-time">Pick your own</span>`;
+    customBtn.onclick = () => openCustom(dayKey);
+    grid.appendChild(customBtn);
+    row.appendChild(grid);
+
+    if(showCustom){
+      const cg = document.createElement('div');
+      cg.className = 'shift-grid custom-grid';
+      SHIFTS.forEach(shift => {
+        const btn = document.createElement('div');
+        const selected = pid !== 'off' && entry.shifts && entry.shifts.includes(shift.key);
+        btn.className = 'shift-btn' + (selected ? ' selected' : '');
+        btn.innerHTML = `<span class="shift-name">${selected ? '✓ ' : ''}${shift.hours}</span><span class="shift-time">${shift.name}</span>`;
+        btn.onclick = () => toggleShift(dayKey, shift.key);
+        cg.appendChild(btn);
+      });
+      row.appendChild(cg);
+    }
+
+    dayRows.appendChild(row);
   });
 
   const footer = document.createElement('div');
@@ -662,16 +1074,52 @@ function renderDayRows(){
       weekData[currentStaff].locked = true;
       saveStaffAvailability(currentStaff);
       renderDayRows();
+      sysToast('Availability confirmed');
     };
     footer.appendChild(confirmBtn);
   }
   dayRows.appendChild(footer);
 }
 
-function toggleShift(dayKey, shiftKey){
-  if(isReadOnly()) return;
+function canEdit(){
+  if(isReadOnly()) return false;
   if(!weekData[currentStaff]) weekData[currentStaff] = {};
-  if(weekData[currentStaff].locked) return;
+  return !weekData[currentStaff].locked;
+}
+function commitDay(){
+  saveStaffAvailability(currentStaff);
+  renderDayRows();
+  renderOverview();
+}
+
+// Tap a preset to select it; tap it again to clear the day
+function setPreset(dayKey, id){
+  if(!canEdit()) return;
+  const current = presetOf(weekData[currentStaff][dayKey]);
+  customOpen[dayKey] = false;
+  if(current === id){
+    weekData[currentStaff][dayKey] = { status:'available', shifts:[] };
+  } else if(id === 'off'){
+    weekData[currentStaff][dayKey] = { status:'unavailable', shifts:[] };
+  } else {
+    const p = PRESETS.find(p => p.id === id);
+    weekData[currentStaff][dayKey] = { status:'available', shifts: p.shifts.slice() };
+  }
+  commitDay();
+}
+
+function openCustom(dayKey){
+  if(!canEdit()) return;
+  const entry = weekData[currentStaff][dayKey];
+  if(entry && entry.status === 'unavailable'){
+    weekData[currentStaff][dayKey] = { status:'available', shifts:[] };
+  }
+  customOpen[dayKey] = true;
+  commitDay();
+}
+
+function toggleShift(dayKey, shiftKey){
+  if(!canEdit()) return;
   let entry = weekData[currentStaff][dayKey];
   if(!entry || entry.status === 'unavailable'){
     entry = { status:'available', shifts:[] };
@@ -680,41 +1128,8 @@ function toggleShift(dayKey, shiftKey){
   if(idx === -1) entry.shifts.push(shiftKey);
   else entry.shifts.splice(idx, 1);
   weekData[currentStaff][dayKey] = entry;
-  saveStaffAvailability(currentStaff);
-  renderDayRows();
-  renderOverview();
-}
-
-function setAllDay(dayKey){
-  if(isReadOnly()) return;
-  if(!weekData[currentStaff]) weekData[currentStaff] = {};
-  if(weekData[currentStaff].locked) return;
-  const entry = weekData[currentStaff][dayKey];
-  const alreadyAllDay = entry && entry.status === 'available' && entry.shifts && entry.shifts.length === SHIFTS.length;
-  if(alreadyAllDay){
-    weekData[currentStaff][dayKey] = { status:'available', shifts:[] };
-  } else {
-    weekData[currentStaff][dayKey] = { status:'available', shifts: SHIFTS.map(s => s.key) };
-  }
-  saveStaffAvailability(currentStaff);
-  renderDayRows();
-  renderOverview();
-}
-
-function toggleUnavailable(dayKey){
-  if(isReadOnly()) return;
-  if(!weekData[currentStaff]) weekData[currentStaff] = {};
-  if(weekData[currentStaff].locked) return;
-  const entry = weekData[currentStaff][dayKey];
-  const currentlyUnavailable = entry && entry.status === 'unavailable';
-  if(currentlyUnavailable){
-    weekData[currentStaff][dayKey] = { status:'available', shifts:[] };
-  } else {
-    weekData[currentStaff][dayKey] = { status:'unavailable', shifts:[] };
-  }
-  saveStaffAvailability(currentStaff);
-  renderDayRows();
-  renderOverview();
+  customOpen[dayKey] = true;
+  commitDay();
 }
 
 function renderOverview(){
@@ -723,6 +1138,7 @@ function renderOverview(){
   overviewBody.innerHTML = '';
   if(staffList.length === 0){
     overviewBody.innerHTML = `<tr><td colspan="8" class="empty">No staff added yet.</td></tr>`;
+    paintHeader();
     return;
   }
   staffList.forEach(name => {
@@ -734,17 +1150,29 @@ function renderOverview(){
         html += `<td class="unset">—</td>`;
       } else if(entry.status === 'unavailable'){
         html += `<td class="off">Off</td>`;
-      } else if(entry.shifts.length === SHIFTS.length){
-        html += `<td style="color:#8fe9ff;font-weight:700;">All Day</td>`;
       } else {
-        const codes = entry.shifts.map(k => SHIFTS.find(s => s.key===k).short.split(' ')[0]).join(',');
-        html += `<td>${codes}</td>`;
+        const d = describeEntry(entry);
+        html += `<td class="avail${d.id === 'any' ? ' avail-any' : ''}"><div class="ov-hours">${d.hours}</div><div class="ov-label">${d.label}</div></td>`;
       }
     });
     tr.innerHTML = html;
     overviewBody.appendChild(tr);
   });
+  paintHeader();
 }
+
+// Stretch one gradient across the whole header row instead of one per box
+function paintHeader(){
+  const table = document.getElementById('overviewTable');
+  if(!table) return;
+  const w = table.offsetWidth;
+  overviewHead.querySelectorAll('th').forEach(th => {
+    th.style.backgroundSize = w + 'px 100%';
+    th.style.backgroundPosition = (-th.offsetLeft) + 'px 0';
+  });
+}
+window.addEventListener('resize', paintHeader);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(paintHeader);
 
 // ---------- add / remove staff ----------
 addStaffBtn.addEventListener('click', async () => {
@@ -785,8 +1213,34 @@ function renderStaffManageList(){
   });
 }
 
+// Red "system failure" confirmation (replaces the plain browser confirm box)
+function askRemove(name){
+  return new Promise(resolve => {
+    const ov = document.getElementById('removeModal');
+    const m = ov.querySelector('.modal');
+    const cancelBtn = document.getElementById('removeCancelBtn');
+    const confirmBtn = document.getElementById('removeConfirmBtn');
+    document.getElementById('removeModalText').innerHTML =
+      `Remove <b>${escapeHtml(name)}</b>? Their availability for this week will be deleted too. This cannot be undone.`;
+    const done = (val) => {
+      ov.classList.remove('show');
+      cancelBtn.onclick = confirmBtn.onclick = ov.onclick = null;
+      resolve(val);
+    };
+    cancelBtn.onclick = () => done(false);
+    confirmBtn.onclick = () => done(true);
+    ov.onclick = (e) => { if(e.target === ov) done(false); };
+    ov.classList.add('show');
+    m.classList.remove('shake');
+    void m.offsetWidth;            // restart the animation
+    m.classList.add('shake');
+    setTimeout(() => m.classList.remove('shake'), 650);
+    if(navigator.vibrate) navigator.vibrate([140, 60, 140, 60, 260]);   // long warning buzz (Android)
+  });
+}
+
 async function removeStaff(name){
-  if(!confirm(`Remove ${name}? This deletes their availability for this week too.`)) return;
+  if(!(await askRemove(name))) return;
   try{
     setStatus('Saving…');
     const enc = encodeURIComponent(name);
@@ -823,6 +1277,14 @@ function showMissingModal(missing, isEmpty){
     missingList.innerHTML = missing.map(n => `<div>• ${escapeHtml(n)}</div>`).join('');
   }
   reminderModal.classList.add('show');
+  if(!isEmpty){
+    const m = reminderModal.querySelector('.modal');
+    m.classList.remove('shake');
+    void m.offsetWidth;            // restart the animation
+    m.classList.add('shake');
+    setTimeout(() => m.classList.remove('shake'), 650);
+    if(navigator.vibrate) navigator.vibrate([70, 40, 70, 40, 110]);   // phone buzz (Android)
+  }
 }
 dismissModalBtn.addEventListener('click', () => reminderModal.classList.remove('show'));
 checkMissingBtn.addEventListener('click', async () => {
@@ -831,86 +1293,234 @@ checkMissingBtn.addEventListener('click', async () => {
   showMissingModal(missing, missing.length===0);
 });
 
-// ---------- PDF export ----------
+// ---------- PDF export (colour-coded for the manager, with open/close coverage counts) ----------
+const PDF_STYLE = {
+  any:      { fill:[214,242,225], text:[18,105,58]   },
+  notclose: { fill:[213,233,250], text:[16,76,150]   },
+  open:     { fill:[255,243,205], text:[140,95,0]    },
+  close:    { fill:[232,223,250], text:[85,50,160]   },
+  custom:   { fill:[226,232,240], text:[50,65,95]    },
+  off:      { fill:[252,224,229], text:[190,35,65]   },
+  none:     { fill:[242,242,242], text:[150,150,150] },
+  sum:      { fill:[226,231,246], text:[6,20,52]     }
+};
+const PDF_LEGEND = [
+  ['any','Anytime','8am–11pm'],
+  ['notclose','Not closing','8am–9pm'],
+  ['open','Opening only','8am–4pm'],
+  ['close','Closing only','3pm–11pm'],
+  ['custom','Custom','mixed hours'],
+  ['off','Off','not available'],
+  ['none','Not submitted','']
+];
+
 exportPdfBtn.addEventListener('click', () => {
   if(staffList.length === 0) return;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation:'landscape', unit:'pt', format:'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
   const marginX = 30;
+  const NAVY = [6,20,52];
 
   const startLabel = weekDates[0].toLocaleDateString([], {month:'short', day:'numeric'});
   const endLabel = weekDates[6].toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'});
 
+  // title band
+  doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+  doc.rect(0, 0, pageW, 62, 'F');
   doc.setFont('helvetica','bold');
-  doc.setFontSize(18);
-  doc.setTextColor(28,36,48);
-  doc.text('Shift Availability Roster', marginX, 42);
+  doc.setFontSize(20);
+  doc.setTextColor(255,255,255);
+  doc.text('Shift Availability Roster', marginX, 30);
   doc.setFont('helvetica','normal');
-  doc.setFontSize(11);
-  doc.setTextColor(90,90,90);
-  doc.text('Week of ' + startLabel + ' – ' + endLabel, marginX, 60);
+  doc.setFontSize(12);
+  doc.setTextColor(160,225,255);
+  doc.text('Week of ' + startLabel + ' – ' + endLabel, marginX, 49);
+  doc.setFontSize(9);
+  doc.setTextColor(150,170,210);
+  doc.text('Generated ' + new Date().toLocaleString([], {dateStyle:'medium', timeStyle:'short'}), pageW - marginX, 49, { align:'right' });
 
-  const head = [['Staff', ...DAY_LABELS.map((label,i) => label + ' ' + weekDates[i].getDate())]];
-
-  function cellFor(name, dayKey){
+  function cellInfo(name, dayKey){
     const entry = weekData[name] && weekData[name][dayKey];
-    if(!dayIsSet(entry)) return 'Not submitted';
-    if(entry.status === 'unavailable') return 'Not available';
-    if(entry.shifts.length === SHIFTS.length) return 'All Day';
-    return entry.shifts.map(k => {
-      const s = SHIFTS.find(s => s.key === k);
-      return `${s.name} ${s.hours}`;
-    }).join('\n');
+    if(!dayIsSet(entry)) return { kind:'none', hours:'—', label:'Not submitted' };
+    if(entry.status === 'unavailable') return { kind:'off', hours:'OFF', label:'' };
+    const d = describeEntry(entry);
+    return { kind:d.id, hours:d.hours, label:d.label };
+  }
+  function countRow(title, shiftKey){
+    return {
+      name: title,
+      summary: true,
+      infos: DAY_KEYS.map(dk => {
+        const n = staffList.filter(nm => {
+          const e = weekData[nm] && weekData[nm][dk];
+          return dayIsSet(e) && e.status !== 'unavailable' && e.shifts.includes(shiftKey);
+        }).length;
+        return { kind:'sum', hours:String(n), label: n === 1 ? 'person' : 'people' };
+      })
+    };
   }
 
-  const body = staffList.map(name => [name, ...DAY_KEYS.map(dk => cellFor(name, dk))]);
+  const rows = staffList.map(name => ({ name, infos: DAY_KEYS.map(dk => cellInfo(name, dk)) }))
+    .concat([ countRow('Can open (8am)', 'opening'), countRow('Can close (11pm)', 'closing') ]);
+
+  const head = [['Staff', ...DAY_LABELS.map((label,i) =>
+    label.toUpperCase() + '\n' + weekDates[i].toLocaleDateString([], {day:'numeric', month:'short'}))]];
+  const body = rows.map(r => [r.name, ...r.infos.map(() => '')]);
+
+  const rowH = Math.max(24, Math.min(36, Math.floor((pageH - 80 - 36 - 70) / rows.length)));
 
   doc.autoTable({
     head,
     body,
-    startY: 74,
+    startY: 78,
     margin: { left: marginX, right: marginX },
     theme: 'grid',
     styles: {
       font: 'helvetica',
-      fontSize: 9,
-      cellPadding: 5,
+      fontSize: 10,
+      cellPadding: 4,
       halign: 'center',
       valign: 'middle',
-      lineColor: [201,190,163],
-      lineWidth: 0.75,
+      lineColor: [255,255,255],
+      lineWidth: 1.5,
+      minCellHeight: rowH,
       textColor: [30,30,30]
     },
     headStyles: {
-      fillColor: [28,36,48],
+      fillColor: NAVY,
       textColor: [255,255,255],
       fontStyle: 'bold',
-      fontSize: 10
+      fontSize: 10,
+      minCellHeight: 30
     },
     columnStyles: {
-      0: { halign:'left', fontStyle:'bold', cellWidth: 100 }
+      0: { halign:'left', fontStyle:'bold', fontSize:11, cellWidth:100, fillColor:[240,243,250] }
     },
-    alternateRowStyles: { fillColor: [247,243,233] },
     didParseCell: (data) => {
-      if(data.section === 'body' && data.column.index > 0){
-        const text = Array.isArray(data.cell.raw) ? data.cell.raw.join(' ') : data.cell.raw;
-        if(text === 'Not available'){ data.cell.styles.textColor = [168,64,47]; }
-        else if(text === 'Not submitted'){ data.cell.styles.textColor = [160,152,120]; data.cell.styles.fontStyle = 'italic'; }
-        else if(text === 'All Day'){ data.cell.styles.textColor = [143,100,32]; data.cell.styles.fontStyle = 'bold'; data.cell.styles.fontSize = 10; }
-        else { data.cell.styles.textColor = [76,122,79]; data.cell.styles.fontStyle = 'bold'; }
+      if(data.section !== 'body') return;
+      const row = rows[data.row.index];
+      if(data.column.index === 0){
+        if(row.summary){ data.cell.styles.fillColor = PDF_STYLE.sum.fill; data.cell.styles.fontSize = 10; }
+        return;
+      }
+      data.cell.styles.fillColor = PDF_STYLE[row.infos[data.column.index - 1].kind].fill;
+    },
+    didDrawCell: (data) => {
+      if(data.section !== 'body' || data.column.index === 0) return;
+      const info = rows[data.row.index].infos[data.column.index - 1];
+      const c = PDF_STYLE[info.kind].text;
+      const cx = data.cell.x + data.cell.width / 2;
+      const cy = data.cell.y + data.cell.height / 2;
+      doc.setTextColor(c[0], c[1], c[2]);
+      doc.setFont('helvetica','bold');
+      if(info.label){
+        doc.setFontSize(info.kind === 'sum' ? 13 : 10.5);
+        doc.text(info.hours, cx, cy - 1, { align:'center' });
+        doc.setFont('helvetica','normal');
+        doc.setFontSize(7.5);
+        doc.text(info.label, cx, cy + 9, { align:'center' });
+      } else {
+        doc.setFontSize(12);
+        doc.text(info.hours, cx, cy + 4, { align:'center' });
       }
     }
   });
 
-  const finalY = doc.lastAutoTable.finalY + 20;
+  // legend + notes
+  let y = doc.lastAutoTable.finalY + 20;
+  if(y > pageH - 62){ doc.addPage(); y = 44; }
+  let x = marginX;
+  PDF_LEGEND.forEach(item => {
+    const st = PDF_STYLE[item[0]];
+    doc.setFillColor(st.fill[0], st.fill[1], st.fill[2]);
+    doc.setDrawColor(st.text[0], st.text[1], st.text[2]);
+    doc.setLineWidth(0.6);
+    doc.rect(x, y - 8, 12, 10, 'FD');
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(40,40,40);
+    doc.text(item[1], x + 17, y);
+    if(item[2]){
+      doc.setFont('helvetica','normal');
+      doc.setTextColor(110,110,110);
+      doc.text(item[2], x + 17, y + 9);
+    }
+    x += 108;
+  });
+
   doc.setFont('helvetica','normal');
-  doc.setFontSize(9);
-  doc.setTextColor(120,120,120);
-  doc.text('Shift hours — Opening 8am–4pm  ·  Mid-Day 9am–6pm or 12pm–9pm  ·  Closing 3pm–11pm', marginX, finalY);
-  doc.text('Generated ' + new Date().toLocaleString([], {dateStyle:'medium', timeStyle:'short'}), marginX, finalY + 14);
+  doc.setFontSize(8.5);
+  doc.setTextColor(110,110,110);
+  doc.text('Times show the hours each person can work (shop hours 8am–11pm). Bottom rows count staff who can open or close each day.', marginX, y + 26);
+  const missing = getMissingStaff();
+  if(missing.length){
+    doc.setTextColor(190,35,65);
+    doc.text('Not fully submitted: ' + missing.join(', '), marginX, y + 38);
+  }
 
   doc.save('shift-availability-' + weekKey + '.pdf');
 });
+
+// ---------- System press effects (ripple + sparks + frame flash on every button) ----------
+function sysToast(msg){
+  const t = document.createElement('div');
+  t.className = 'sys-toast';
+  t.innerHTML = '<div class="tt">[ System ]</div><div class="tm">' + escapeHtml(msg) + '</div>';
+  document.body.appendChild(t);
+  requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('show')));
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2200);
+}
+(function setupPressFx(){
+  const SEL = 'button, .shift-btn, .staff-pick-btn, .week-arrow';
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const layer = document.createElement('div');
+  layer.className = 'fx-layer';
+  document.body.appendChild(layer);
+
+  // Effects live in a fixed overlay, so they survive the buttons being re-rendered on tap
+  function burst(el, x, y){
+    if(reduce || el.disabled) return;
+    const r = el.getBoundingClientRect();
+    const nodes = [];
+
+    const frame = document.createElement('div');
+    frame.className = 'fx-frame';
+    frame.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;`;
+    nodes.push(frame);
+
+    const size = Math.max(r.width, r.height) * 1.6;
+    const ripple = document.createElement('div');
+    ripple.className = 'fx-ripple';
+    ripple.style.cssText = `left:${x}px;top:${y}px;width:${size}px;height:${size}px;`;
+    nodes.push(ripple);
+
+    for(let i = 0; i < 8; i++){
+      const a = (i / 8) * Math.PI * 2 + Math.random() * 0.6;
+      const d = 22 + Math.random() * 28;
+      const s = document.createElement('div');
+      s.className = 'fx-spark';
+      s.style.cssText = `left:${x}px;top:${y}px;--dx:${Math.cos(a) * d}px;--dy:${Math.sin(a) * d}px;`;
+      nodes.push(s);
+    }
+    nodes.forEach(n => layer.appendChild(n));
+    setTimeout(() => nodes.forEach(n => n.remove()), 750);
+  }
+
+  document.addEventListener('pointerdown', e => {
+    const el = e.target.closest && e.target.closest(SEL);
+    if(el) burst(el, e.clientX, e.clientY);
+  }, true);
+  // keyboard-triggered activation (Enter / Space)
+  document.addEventListener('click', e => {
+    if(e.detail !== 0) return;
+    const el = e.target.closest && e.target.closest(SEL);
+    if(!el) return;
+    const r = el.getBoundingClientRect();
+    burst(el, r.left + r.width / 2, r.top + r.height / 2);
+  }, true);
+})();
 
 // ---------- init ----------
 async function init(){
